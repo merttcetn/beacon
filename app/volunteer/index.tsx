@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import type MapView from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppMap, type AppMapMarker } from '@/components/AppMap';
 import { DockBar } from '@/components/DockBar';
@@ -62,6 +63,9 @@ export default function VolunteerMap() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const router = useRouter();
   const userTickets = useTicketStore((s) => s.userTickets);
+  const mapRef = useRef<MapView>(null);
+  const fade = useRef(new Animated.Value(0)).current;
+  const cardTranslateY = fade.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] });
 
   const markers = useMemo<AppMapMarker[]>(
     () => [...userTickets, ...SAMPLE_TICKETS].map(toMarker),
@@ -74,6 +78,28 @@ export default function VolunteerMap() {
       null
     : null;
 
+  useEffect(() => {
+    if (!selectedId) return;
+    fade.setValue(0);
+    Animated.timing(fade, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [selectedId, fade]);
+
+  function handleMarkerTap(id: string) {
+    setSelectedId(id);
+    const t =
+      userTickets.find((x) => x.id === id) ??
+      SAMPLE_TICKETS.find((x) => x.id === id);
+    if (!t) return;
+    mapRef.current?.animateCamera(
+      { center: { latitude: t.location.latitude, longitude: t.location.longitude } },
+      { duration: 350 },
+    );
+  }
+
   function handleBack() {
     if (router.canGoBack()) {
       router.back();
@@ -85,12 +111,23 @@ export default function VolunteerMap() {
 
   return (
     <View style={styles.root}>
-      <AppMap markers={markers} onMarkerTap={setSelectedId} />
+      <AppMap
+        ref={mapRef}
+        markers={markers}
+        onMarkerTap={handleMarkerTap}
+        onPress={() => setSelectedId(null)}
+      />
 
       <VolunteerMapHeader onBack={handleBack} />
 
       {selectedTicket ? (
-        <SafeAreaView edges={['top']} style={styles.previewSafe} pointerEvents="box-none">
+        <Animated.View
+          style={[
+            styles.previewWrapper,
+            { opacity: fade, transform: [{ translateY: cardTranslateY }] },
+          ]}
+          pointerEvents="box-none"
+        >
           <Pressable
             style={styles.previewCard}
             onPress={() => router.push(`/volunteer/pin/${selectedTicket.id}`)}
@@ -114,7 +151,7 @@ export default function VolunteerMap() {
               <Ionicons name="chevron-forward" size={18} color={colors.accent.primary} />
             </View>
           </Pressable>
-        </SafeAreaView>
+        </Animated.View>
       ) : null}
 
       <View style={styles.bottomLeft} pointerEvents="box-none">
@@ -192,9 +229,15 @@ const styles = StyleSheet.create({
     height: 34,
   },
 
-  previewSafe: { position: 'absolute', top: 0, left: 0, right: 0 },
+  previewWrapper: {
+    position: 'absolute',
+    top: '28%',
+    left: 0,
+    right: 0,
+    zIndex: 5,
+  },
   previewCard: {
-    marginTop: 60, marginHorizontal: 16,
+    marginHorizontal: 16,
     height: 64, borderRadius: 16,
     backgroundColor: colors.bg.elevated,
     borderWidth: 1, borderColor: colors.border.default,

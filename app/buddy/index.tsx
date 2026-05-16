@@ -2,8 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedProps,
@@ -22,6 +22,8 @@ import {
   WALK_DURATIONS,
   type WalkDuration,
 } from '@/constants/buddyScripts';
+import { useBuddyVoice } from '@/hooks/useBuddyVoice';
+import type { BuddyCommand } from '@/lib/buddyCommands';
 import { speakTts, stopTts } from '@/lib/tts';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily } from '@/theme';
@@ -38,9 +40,6 @@ const TICK_PATTERN: Haptics.ImpactFeedbackStyle[] = [
   Haptics.ImpactFeedbackStyle.Heavy,
 ];
 
-// MOCK STT "dinleme" animasyonu süresi
-const MOCK_LISTEN_MS = 1200;
-
 type BuddyScene =
   | { kind: 'mode_select' }
   | { kind: 'walk_duration' }
@@ -53,6 +52,11 @@ interface ChoiceChip {
   label: string;
   onPress: () => void;
 }
+
+const DEBUG_TAP_THRESHOLD = 3;
+const DEBUG_TAP_WINDOW_MS = 1500;
+const ONBOARDING_SWIPE_DISTANCE = -70;
+const ONBOARDING_SWIPE_VELOCITY = -0.45;
 
 function speak(text: string) {
   void speakTts(text);
@@ -67,8 +71,10 @@ export default function BuddyMain() {
 
   const [scene, setScene] = useState<BuddyScene>({ kind: 'mode_select' });
   const [lastSpoken, setLastSpoken] = useState<string>('');
-  const [listening, setListening] = useState(false);
-  const listenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
+  const [lastTranscript, setLastTranscript] = useState<string>('');
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const debugTapTimes = useRef<number[]>([]);
 
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -90,11 +96,30 @@ export default function BuddyMain() {
     holdProgress.value = withTiming(0, { duration: 200 });
   }
 
-  function stopSession() {
+  const stopSession = useCallback(() => {
     void stopTts();
     reset();
     router.replace('/onboarding');
-  }
+  }, [reset, router]);
+
+  const onboardingSwipe = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gesture) => {
+          const isHorizontal = Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25;
+          return isHorizontal && gesture.dx < -18;
+        },
+        onPanResponderRelease: (_, gesture) => {
+          if (
+            gesture.dx < ONBOARDING_SWIPE_DISTANCE ||
+            gesture.vx < ONBOARDING_SWIPE_VELOCITY
+          ) {
+            stopSession();
+          }
+        },
+      }),
+    [stopSession],
+  );
 
   function startHold() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -116,16 +141,61 @@ export default function BuddyMain() {
     }, HOLD_DURATION_MS);
   }
 
-  function mockListen(then: () => void) {
-    if (listening) return;
-    void stopTts();
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setListening(true);
-    if (listenTimer.current) clearTimeout(listenTimer.current);
-    listenTimer.current = setTimeout(() => {
-      setListening(false);
-      then();
-    }, MOCK_LISTEN_MS);
+  const dispatchCommand = useCallback(
+    (cmd: BuddyCommand) => {
+      setScene((current) => {
+        if (current.kind === 'mode_select') {
+          if (cmd.kind === 'select_sport') return { kind: 'sport_navigating' };
+          if (cmd.kind === 'select_walk') return { kind: 'walk_duration' };
+        }
+        if (current.kind === 'walk_duration' && cmd.kind === 'walk_duration') {
+          return { kind: 'walk_active', duration: cmd.minutes };
+        }
+        if (current.kind === 'sport_equipment' && cmd.kind === 'next_equipment') {
+          const next = current.index + 1;
+          return next >= SPORT_EQUIPMENTS.length
+            ? { kind: 'sport_done' }
+            : { kind: 'sport_equipment', index: next };
+        }
+        if (current.kind === 'walk_active' && cmd.kind === 'stop') {
+          queueMicrotask(stopSession);
+          return current;
+        }
+        return current;
+      });
+    },
+    [stopSession],
+  );
+
+  const { metering, isSpeaking } = useBuddyVoice({
+    sceneKind: scene.kind,
+    enabled: voiceEnabled,
+    onCommand: dispatchCommand,
+    onTranscript: (t) => setLastTranscript(t),
+    onPermissionDenied: () => {
+      console.warn('[buddy] mikrofon izni reddedildi — debug moduna geçildi');
+      setVoiceEnabled(false);
+      setDebugMode(true);
+    },
+  });
+
+  const waveformMode: 'idle' | 'listening' | 'speaking' = isSpeaking
+    ? 'speaking'
+    : voiceEnabled
+    ? 'listening'
+    : 'idle';
+
+  function handleStatusChipTap() {
+    const now = Date.now();
+    debugTapTimes.current = [
+      ...debugTapTimes.current.filter((t) => now - t < DEBUG_TAP_WINDOW_MS),
+      now,
+    ];
+    if (debugTapTimes.current.length >= DEBUG_TAP_THRESHOLD) {
+      debugTapTimes.current = [];
+      setDebugMode((d) => !d);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
   }
 
   useEffect(() => {
@@ -179,7 +249,6 @@ export default function BuddyMain() {
       void stopTts();
       if (holdTimer.current) clearTimeout(holdTimer.current);
       if (tickTimer.current) clearInterval(tickTimer.current);
-      if (listenTimer.current) clearTimeout(listenTimer.current);
     };
   }, []);
 
@@ -190,32 +259,28 @@ export default function BuddyMain() {
   }
 
   const choices: ChoiceChip[] = (() => {
-    if (listening) return [];
+    if (!debugMode) return [];
     if (scene.kind === 'mode_select') {
       return [
-        { label: '1 · Spor', onPress: () => mockListen(() => setScene({ kind: 'sport_navigating' })) },
-        { label: '2 · Yürüyüş', onPress: () => mockListen(() => setScene({ kind: 'walk_duration' })) },
+        { label: '1 · Spor', onPress: () => dispatchCommand({ kind: 'select_sport' }) },
+        { label: '2 · Yürüyüş', onPress: () => dispatchCommand({ kind: 'select_walk' }) },
       ];
     }
     if (scene.kind === 'walk_duration') {
       return WALK_DURATIONS.map((d) => ({
         label: `${d} dk`,
-        onPress: () => mockListen(() => setScene({ kind: 'walk_active', duration: d })),
+        onPress: () => dispatchCommand({ kind: 'walk_duration', minutes: d }),
       }));
     }
     if (scene.kind === 'sport_equipment') {
-      const next = scene.index + 1;
-      const goNext = next >= SPORT_EQUIPMENTS.length
-        ? () => setScene({ kind: 'sport_done' })
-        : () => setScene({ kind: 'sport_equipment', index: next });
       return [
-        { label: 'Sıradaki hareket', onPress: () => mockListen(goNext) },
+        { label: 'Sıradaki hareket', onPress: () => dispatchCommand({ kind: 'next_equipment' }) },
       ];
     }
     return [];
   })();
 
-  const stopEnabled = scene.kind !== 'mode_select' && scene.kind !== 'walk_duration';
+  const stopEnabled = true;
 
   const progressFillStyle = useAnimatedStyle(() => ({
     width: `${holdProgress.value * 100}%`,
@@ -223,19 +288,28 @@ export default function BuddyMain() {
   const glowProps = useAnimatedProps(() => ({ opacity: glow.value }));
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
-      <View style={styles.statusRow}>
-        <View style={styles.statusChip}>
-          <PulseDot color={colors.status.verified} size={8} />
-          <Text style={styles.statusLabel}>BUDDY HAZIR</Text>
-          <View style={styles.statusDivider} />
-          <Text style={styles.statusTime}>12:34</Text>
+    <SafeAreaView
+      style={styles.root}
+      edges={['top', 'left', 'right']}
+      {...onboardingSwipe.panHandlers}
+    >
+        <View style={styles.statusRow}>
+          <Pressable
+            onPress={handleStatusChipTap}
+            accessibilityRole="button"
+            accessibilityLabel="Buddy durum çubuğu"
+            style={styles.statusChip}
+          >
+            <PulseDot color={debugMode ? '#FFB377' : colors.status.verified} size={8} />
+            <Text style={styles.statusLabel}>{debugMode ? 'DEBUG MODU' : 'BUDDY HAZIR'}</Text>
+            <View style={styles.statusDivider} />
+            <Text style={styles.statusTime}>12:34</Text>
+          </Pressable>
+          <View style={styles.statusRight}>
+            <Ionicons name="navigate-outline" size={13} color={colors.text.tertiary} />
+            <Text style={styles.locText}>ODTÜ Teknokent</Text>
+          </View>
         </View>
-        <View style={styles.statusRight}>
-          <Ionicons name="navigate-outline" size={13} color={colors.text.tertiary} />
-          <Text style={styles.locText}>ODTÜ Teknokent</Text>
-        </View>
-      </View>
 
       <Pressable
         accessibilityRole="button"
@@ -277,14 +351,18 @@ export default function BuddyMain() {
         ))}
 
         <View style={styles.speakingPill}>
-          <PulseDot color={listening ? '#FFB377' : '#5BD4B9'} size={6} duration={1200} />
+          <PulseDot
+            color={isSpeaking ? '#5BD4B9' : '#FFB377'}
+            size={6}
+            duration={1200}
+          />
           <Text style={styles.speakingPillText}>
-            {listening ? 'DİNLENİYOR' : 'BUDDY KONUŞUYOR'}
+            {isSpeaking ? 'BUDDY KONUŞUYOR' : 'SİZİ DİNLİYOR'}
           </Text>
         </View>
 
         <View style={styles.waveformWrap} pointerEvents="none">
-          <Waveform />
+          <Waveform mode={waveformMode} metering={metering} />
         </View>
 
         <View
@@ -297,8 +375,11 @@ export default function BuddyMain() {
         >
           <Text style={styles.ttsLabel}>ŞU AN OKUNUYOR</Text>
           <Text style={styles.ttsText}>
-            {lastSpoken || (listening ? 'Dinliyorum…' : '...')}
+            {lastSpoken || (voiceEnabled ? 'Dinliyorum…' : '...')}
           </Text>
+          {debugMode && lastTranscript ? (
+            <Text style={styles.transcriptDebug}>↳ "{lastTranscript}"</Text>
+          ) : null}
         </View>
 
         <View style={styles.ovalFooter} pointerEvents="box-none">
@@ -341,7 +422,6 @@ export default function BuddyMain() {
             pressed && stopEnabled && { opacity: 0.96 },
           ]}
         >
-          <View pointerEvents="none" style={styles.stopGradientOverlay} />
           <Animated.View
             pointerEvents="none"
             style={[styles.stopProgressWrap, progressFillStyle]}
@@ -413,6 +493,10 @@ const styles = StyleSheet.create({
   ttsText: {
     fontFamily: fontFamily.display, fontSize: 22, lineHeight: 30,
     color: '#F4F1EB', letterSpacing: -0.25,
+  },
+  transcriptDebug: {
+    fontFamily: fontFamily.mono, fontSize: 11, marginTop: 10,
+    color: 'rgba(255,179,119,0.85)', letterSpacing: 0.2,
   },
   ovalFooter: {
     position: 'absolute', bottom: 18, left: 20, right: 20,

@@ -16,6 +16,24 @@ let requestId = 0;
 
 const audioUrlCache = new Map<string, string>();
 
+type TtsListener = (isSpeaking: boolean) => void;
+const ttsListeners = new Set<TtsListener>();
+let ttsIsSpeaking = false;
+
+function emitTtsState(next: boolean) {
+  if (ttsIsSpeaking === next) return;
+  ttsIsSpeaking = next;
+  ttsListeners.forEach((l) => l(next));
+}
+
+export function subscribeTtsState(listener: TtsListener): () => void {
+  ttsListeners.add(listener);
+  listener(ttsIsSpeaking);
+  return () => {
+    ttsListeners.delete(listener);
+  };
+}
+
 function getFalKey() {
   const extra = Constants.expoConfig?.extra as { FAL_KEY?: string } | undefined;
   return extra?.FAL_KEY ?? '';
@@ -85,6 +103,7 @@ async function fetchAudioUrl(text: string) {
 export async function stopTts() {
   requestId += 1;
   await unloadCurrentSound();
+  emitTtsState(false);
 }
 
 export async function speakTts(text: string) {
@@ -95,10 +114,12 @@ export async function speakTts(text: string) {
   requestId = activeRequest;
 
   await unloadCurrentSound();
+  emitTtsState(true);
 
   try {
     await Audio.setAudioModeAsync({
       playsInSilentModeIOS: true,
+      allowsRecordingIOS: true,
       shouldDuckAndroid: true,
       staysActiveInBackground: false,
     });
@@ -121,11 +142,13 @@ export async function speakTts(text: string) {
       if (status.isLoaded && status.didJustFinish) {
         if (currentSound === sound) currentSound = null;
         sound.unloadAsync().catch(() => {});
+        if (activeRequest === requestId) emitTtsState(false);
       }
     });
   } catch (error) {
     if (activeRequest === requestId) {
       console.warn('[tts] fal.ai ElevenLabs TTS oynatılamadı:', error);
+      emitTtsState(false);
     }
   }
 }

@@ -3,6 +3,10 @@
 // Gerçek VLM/STT/konum bağlanmıyor — hackathon demo amaçlı sabit script'ler.
 
 export const BUDDY_SCRIPTS = {
+  // 0. İzin reddi
+  micPermissionDenied:
+    'Seni duyamıyorum. Lütfen ayarlardan mikrofon iznini açar mısın?',
+
   // 1. Açılış — mod seçimi
   modeQuestion:
     'Merhaba. Bugün ne yapmak istersin? Birinci seçenek, spor. İkinci seçenek, yürüyüş.',

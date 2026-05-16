@@ -1,4 +1,19 @@
-import { Ionicons } from '@expo/vector-icons';
+import {
+  Bell,
+  Building2,
+  CheckCircle2,
+  ChevronDown,
+  FileText,
+  Flame,
+  Layers,
+  MapPin,
+  Send,
+  ShieldCheck,
+  SlidersHorizontal,
+  TrendingUp,
+  UserRound,
+} from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   Pressable,
@@ -10,42 +25,22 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppMap, type AppMapMarker } from '@/components/AppMap';
 import {
-  CATEGORY_LABEL_TR,
   COMPANY_HEAT_CIRCLES,
   COMPANY_PINS,
-  SEVERITY_LABEL_TR,
   STATUS_TO_HEX,
 } from '@/constants/companyPins';
-import { colors, fontFamily } from '@/theme';
-
-interface Filter {
-  label: string;
-  val?: string;
-}
-
-const FILTERS: Filter[] = [
-  { label: 'Çankaya', val: '4 mahalle' },
-  { label: 'Eksik Rampa · Çukur' },
-  { label: 'Son 30 gün' },
-  { label: '≥ 3 doğrulama' },
-];
-
-const SUMMARY = [
-  { label: 'Toplam ticket', value: '247', delta: '+18', tone: colors.text.primary },
-  { label: 'Doğrulanmış', value: '183', delta: '74%', tone: colors.status.verified },
-  { label: 'Etkilenen', value: '~12.4K', delta: 'kişi', tone: colors.role.visuallyImpaired },
-];
-
-const CATEGORIES = [
-  { label: 'Eksik rampa', pct: 34 },
-  { label: 'Çukur', pct: 28 },
-  { label: 'Yüzey hasarı', pct: 18 },
-  { label: 'Engel', pct: 12 },
-  { label: 'Diğer', pct: 8 },
-];
+import {
+  COMPANY_BRIEF,
+  COMPANY_CATEGORIES,
+  COMPANY_FILTERS,
+  COMPANY_SUMMARY,
+} from '@/constants/companyMarketplace';
+import { colors, fontFamily, radius } from '@/theme';
 
 export default function CompanyDashboard() {
   const [mode, setMode] = useState<'heat' | 'pin'>('heat');
+  const [requestSent, setRequestSent] = useState(false);
+  const router = useRouter();
 
   const markers = useMemo<AppMapMarker[]>(
     () =>
@@ -53,8 +48,6 @@ export default function CompanyDashboard() {
         id: p.id,
         latitude: p.latitude,
         longitude: p.longitude,
-        title: CATEGORY_LABEL_TR[p.category],
-        description: `${p.verification_count} doğrulama · ${SEVERITY_LABEL_TR[p.severity]}`,
         pinColor: STATUS_TO_HEX[p.status],
       })),
     [],
@@ -64,16 +57,53 @@ export default function CompanyDashboard() {
     <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.headerSafe}>
         <View style={styles.headerRow}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>YK</Text>
+          <View style={styles.brandMark}>
+            <Building2 size={18} color={colors.text.inverse} strokeWidth={2.2} />
           </View>
           <View style={styles.headerText}>
-            <Text style={styles.headerLabel}>FİRMA · DASHBOARD</Text>
+            <Text style={styles.headerLabel}>B2B VERİ MARKETPLACE</Text>
             <Text style={styles.headerName}>Yapı Kent A.Ş.</Text>
           </View>
-          <Pressable style={styles.bellBtn}>
-            <Ionicons name="notifications-outline" size={17} color={colors.text.primary} />
+          <Pressable accessibilityRole="button" accessibilityLabel="Bildirimler" style={styles.bellBtn}>
+            <Bell size={17} color={colors.text.primary} strokeWidth={2.2} />
             <View style={styles.bellDot} />
+          </Pressable>
+        </View>
+
+        <View style={styles.marketStrip}>
+          <View style={styles.stripIcon}>
+            <TrendingUp size={16} color={colors.status.partial} strokeWidth={2.4} />
+          </View>
+          <View style={styles.stripCopy}>
+            <Text style={styles.stripTitle}>Çankaya saha fırsatı</Text>
+            <Text style={styles.stripText} numberOfLines={1}>
+              4 mahallede doğrulanmış erişim hasarı yoğunlaşıyor
+            </Text>
+          </View>
+          <View style={styles.trustPill}>
+            <ShieldCheck size={13} color={colors.status.verified} strokeWidth={2.4} />
+            <Text style={styles.trustText}>KVKK</Text>
+          </View>
+        </View>
+
+        <View style={styles.quickNav}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Talepler"
+            onPress={() => router.push('/company/requests')}
+            style={({ pressed }) => [styles.quickNavBtn, pressed && styles.quickNavPressed]}
+          >
+            <FileText size={14} color={colors.accent.primary} strokeWidth={2.4} />
+            <Text style={styles.quickNavText}>Talepler</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Profil"
+            onPress={() => router.push('/company/profile')}
+            style={({ pressed }) => [styles.quickNavBtn, pressed && styles.quickNavPressed]}
+          >
+            <UserRound size={14} color={colors.accent.primary} strokeWidth={2.4} />
+            <Text style={styles.quickNavText}>Profil</Text>
           </Pressable>
         </View>
 
@@ -82,12 +112,12 @@ export default function CompanyDashboard() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterRow}
         >
-          {FILTERS.map((f) => (
+          {COMPANY_FILTERS.map((f) => (
             <View key={f.label} style={styles.filterChip}>
-              <View style={styles.filterDot} />
+              <View style={[styles.filterDot, { backgroundColor: f.dot }]} />
               <Text style={styles.filterText}>{f.label}</Text>
-              {f.val ? <Text style={styles.filterVal}>· {f.val}</Text> : null}
-              <Ionicons name="chevron-down" size={10} color={colors.text.tertiary} />
+              <Text style={styles.filterVal}>· {f.value}</Text>
+              <ChevronDown size={11} color={colors.text.tertiary} strokeWidth={2.4} />
             </View>
           ))}
         </ScrollView>
@@ -100,61 +130,122 @@ export default function CompanyDashboard() {
         />
 
         <View style={styles.summaryRow} pointerEvents="box-none">
-          {SUMMARY.map((c) => (
+          {COMPANY_SUMMARY.map((c) => (
             <View key={c.label} style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>{c.label.toUpperCase()}</Text>
+              <Text style={styles.summaryLabel}>{c.label}</Text>
               <Text style={[styles.summaryValue, { color: c.tone }]}>{c.value}</Text>
-              <Text style={styles.summaryDelta}>{c.delta}</Text>
+              <Text style={styles.summaryMeta}>{c.meta}</Text>
             </View>
           ))}
         </View>
 
-        <View style={styles.catPanel} pointerEvents="box-none">
-          <Text style={styles.catTitle}>KATEGORİ</Text>
-          {CATEGORIES.map((row) => (
+        <View style={styles.briefPanel} pointerEvents="box-none">
+          <View style={styles.briefAccent} />
+          <View style={styles.briefCopy}>
+            <View style={styles.briefKicker}>
+              <MapPin size={12} color={colors.accent.primary} strokeWidth={2.6} />
+              <Text style={styles.briefKickerText}>ÖNE ÇIKAN KÜME</Text>
+            </View>
+            <Text style={styles.briefTitle}>{COMPANY_BRIEF.title}</Text>
+            <Text style={styles.briefDescription} numberOfLines={2}>
+              {COMPANY_BRIEF.description}
+            </Text>
+            <View style={styles.briefChips}>
+              {COMPANY_BRIEF.chips.map((chip) => (
+                <Text key={chip} style={styles.briefChip}>
+                  {chip}
+                </Text>
+              ))}
+            </View>
+          </View>
+          <View style={styles.scoreBox}>
+            <Text style={styles.scoreValue}>{COMPANY_BRIEF.score}</Text>
+            <Text style={styles.scoreLabel}>SKOR</Text>
+            <Text style={styles.scoreSignal} numberOfLines={2}>
+              {COMPANY_BRIEF.signal}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.metricRail} pointerEvents="box-none">
+          {COMPANY_BRIEF.metrics.map((m) => (
+            <View key={m.label} style={styles.railItem}>
+              <Text style={styles.railValue}>{m.value}</Text>
+              <Text style={styles.railLabel}>{m.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.bottomPanel} pointerEvents="box-none">
+          <View style={styles.panelHeader}>
+            <View style={styles.panelTitleWrap}>
+              <SlidersHorizontal size={14} color={colors.text.primary} strokeWidth={2.4} />
+              <Text style={styles.panelTitle}>Kategori dağılımı</Text>
+            </View>
+            <View style={styles.modeSwitch}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Isı haritası"
+                style={[styles.modeBtn, mode === 'heat' && styles.modeBtnActive]}
+                onPress={() => setMode('heat')}
+              >
+                <Flame size={13} color={mode === 'heat' ? '#fff' : colors.text.secondary} strokeWidth={2.5} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Pin görünümü"
+                style={[styles.modeBtn, mode === 'pin' && styles.modeBtnActive]}
+                onPress={() => setMode('pin')}
+              >
+                <Layers size={13} color={mode === 'pin' ? '#fff' : colors.text.secondary} strokeWidth={2.5} />
+              </Pressable>
+            </View>
+          </View>
+
+          {COMPANY_CATEGORIES.map((row) => (
             <View key={row.label} style={styles.catRow}>
               <View style={styles.catHead}>
                 <Text style={styles.catLabel}>{row.label}</Text>
                 <Text style={styles.catPct}>{row.pct}%</Text>
               </View>
               <View style={styles.barTrack}>
-                <View style={[styles.barFill, { width: `${row.pct * 2.5}%` }]} />
+                <View
+                  style={[
+                    styles.barFill,
+                    { width: `${row.pct}%`, backgroundColor: row.tone },
+                  ]}
+                />
               </View>
             </View>
           ))}
         </View>
 
-        <View style={styles.toggleWrap} pointerEvents="box-none">
-          <Pressable
-            style={[styles.toggleBtn, mode === 'heat' && styles.toggleBtnActive]}
-            onPress={() => setMode('heat')}
-          >
-            <Ionicons
-              name="flame"
-              size={14}
-              color={mode === 'heat' ? '#fff' : colors.text.secondary}
-            />
-            <Text style={[styles.toggleText, mode === 'heat' && styles.toggleTextActive]}>Isı</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.toggleBtn, mode === 'pin' && styles.toggleBtnActive]}
-            onPress={() => setMode('pin')}
-          >
-            <Ionicons
-              name="location"
-              size={14}
-              color={mode === 'pin' ? '#fff' : colors.text.secondary}
-            />
-            <Text style={[styles.toggleText, mode === 'pin' && styles.toggleTextActive]}>Pinler</Text>
-          </Pressable>
-        </View>
-
         <View style={styles.fabWrap} pointerEvents="box-none">
-          <Pressable style={styles.fab}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Bu kümeyi talep et"
+            style={({ pressed }) => [
+              styles.fab,
+              requestSent && styles.fabSuccess,
+              pressed && styles.fabPressed,
+            ]}
+            onPress={() => setRequestSent(true)}
+          >
             <View style={styles.fabIcon}>
-              <Ionicons name="cart" size={14} color="#fff" />
+              {requestSent ? (
+                <CheckCircle2 size={16} color="#fff" strokeWidth={2.5} />
+              ) : (
+                <Send size={15} color="#fff" strokeWidth={2.5} />
+              )}
             </View>
-            <Text style={styles.fabText}>Bu Kümeyi Talep Et</Text>
+            <View style={styles.fabCopy}>
+              <Text style={styles.fabText}>
+                {requestSent ? 'Talep gönderildi' : 'Bu Kümeyi Talep Et'}
+              </Text>
+              <Text style={styles.fabSub}>
+                {requestSent ? 'Bildirim admin kuyruğunda' : '47 sinyal · örnek veri'}
+              </Text>
+            </View>
             <View style={styles.fabBadge}>
               <Text style={styles.fabBadgeText}>47</Text>
             </View>
@@ -165,6 +256,9 @@ export default function CompanyDashboard() {
   );
 }
 
+const PANEL_BG = 'rgba(255,255,255,0.96)';
+const PANEL_BORDER = 'rgba(255,255,255,0.72)';
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg.primary },
 
@@ -172,150 +266,451 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg.elevated,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.divider,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
   },
   headerRow: {
-    paddingTop: 8, paddingBottom: 12,
-    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingTop: 8,
+    paddingBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  avatar: {
-    width: 34, height: 34, borderRadius: 10,
+  brandMark: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.sm,
     backgroundColor: colors.accent.primary,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  avatarText: {
-    fontFamily: fontFamily.display, fontSize: 14, color: colors.text.inverse,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerText: { flex: 1 },
   headerLabel: {
-    fontFamily: fontFamily.mono, fontSize: 10,
-    color: colors.text.tertiary, letterSpacing: 1.2,
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    color: colors.text.tertiary,
   },
   headerName: {
-    fontFamily: fontFamily.bodySemiBold, fontSize: 14.5,
-    color: colors.text.primary, marginTop: 1,
+    fontFamily: fontFamily.displayExtra,
+    fontSize: 18,
+    color: colors.text.primary,
+    marginTop: 1,
   },
   bellBtn: {
-    width: 38, height: 38, borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: radius.sm,
     backgroundColor: colors.bg.secondary,
-    borderWidth: 1, borderColor: colors.border.divider,
-    alignItems: 'center', justifyContent: 'center', position: 'relative',
+    borderWidth: 1,
+    borderColor: colors.border.divider,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
   bellDot: {
-    position: 'absolute', top: 7, right: 8,
-    width: 8, height: 8, borderRadius: 99,
+    position: 'absolute',
+    top: 7,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 99,
     backgroundColor: colors.status.new,
-    borderWidth: 1.5, borderColor: colors.bg.secondary,
+    borderWidth: 1.5,
+    borderColor: colors.bg.secondary,
   },
-  filterRow: { gap: 6, paddingBottom: 12 },
-  filterChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10,
+  marketStrip: {
+    minHeight: 50,
+    borderRadius: radius.sm,
+    backgroundColor: '#F6F8F5',
+    borderWidth: 1,
+    borderColor: '#DDE9D8',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    gap: 10,
+  },
+  stripIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.sm,
+    backgroundColor: '#FFF4E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stripCopy: { flex: 1 },
+  stripTitle: {
+    fontFamily: fontFamily.bodySemiBold,
+    fontSize: 13,
+    color: colors.text.primary,
+  },
+  stripText: {
+    fontFamily: fontFamily.body,
+    fontSize: 11.5,
+    color: colors.text.secondary,
+    marginTop: 1,
+  },
+  trustPill: {
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#E7F4EF',
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  trustText: {
+    fontFamily: fontFamily.monoBold,
+    fontSize: 10,
+    color: colors.status.verified,
+  },
+  quickNav: {
+    flexDirection: 'row',
+    gap: 7,
+    marginTop: 8,
+  },
+  quickNavBtn: {
+    minHeight: 38,
+    flex: 1,
+    borderRadius: radius.sm,
     backgroundColor: colors.bg.primary,
-    borderWidth: 1, borderColor: colors.border.default,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
   },
-  filterDot: {
-    width: 6, height: 6, borderRadius: 99, backgroundColor: colors.accent.primary,
+  quickNavPressed: {
+    opacity: 0.76,
+    transform: [{ scale: 0.99 }],
   },
+  quickNavText: {
+    fontFamily: fontFamily.bodySemiBold,
+    fontSize: 12.5,
+    color: colors.text.primary,
+  },
+  filterRow: { gap: 7, paddingVertical: 10 },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bg.primary,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+  },
+  filterDot: { width: 6, height: 6, borderRadius: 99 },
   filterText: {
-    fontFamily: fontFamily.bodyMedium, fontSize: 12, color: colors.text.primary,
+    fontFamily: fontFamily.bodyMedium,
+    fontSize: 12,
+    color: colors.text.primary,
   },
   filterVal: {
-    fontFamily: fontFamily.body, fontSize: 11, color: colors.text.tertiary,
+    fontFamily: fontFamily.body,
+    fontSize: 11,
+    color: colors.text.tertiary,
   },
 
   mapArea: { flex: 1, position: 'relative', overflow: 'hidden' },
 
   summaryRow: {
-    position: 'absolute', top: 12, left: 12, right: 12,
-    flexDirection: 'row', gap: 8,
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    gap: 8,
   },
   summaryCard: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)',
-    borderRadius: 14, padding: 10,
-    shadowColor: '#1A1D24', shadowOpacity: 0.2, shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 }, elevation: 3,
+    backgroundColor: PANEL_BG,
+    borderWidth: 1,
+    borderColor: PANEL_BORDER,
+    borderRadius: radius.sm,
+    padding: 9,
+    shadowColor: '#1A1D24',
+    shadowOpacity: 0.15,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 3,
   },
   summaryLabel: {
-    fontFamily: fontFamily.mono, fontSize: 9.5,
-    color: colors.text.tertiary, letterSpacing: 1, marginBottom: 4,
+    fontFamily: fontFamily.mono,
+    fontSize: 9,
+    color: colors.text.tertiary,
+    marginBottom: 3,
   },
   summaryValue: {
-    fontFamily: fontFamily.displayExtra, fontSize: 22, lineHeight: 22, letterSpacing: -0.4,
+    fontFamily: fontFamily.displayExtra,
+    fontSize: 22,
+    lineHeight: 24,
   },
-  summaryDelta: {
-    fontFamily: fontFamily.body, fontSize: 10.5, color: colors.text.secondary, marginTop: 3,
+  summaryMeta: {
+    fontFamily: fontFamily.body,
+    fontSize: 10.5,
+    color: colors.text.secondary,
+    marginTop: 1,
   },
 
-  catPanel: {
-    position: 'absolute', top: 124, right: 12, width: 168,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)',
-    borderRadius: 14, padding: 12,
-    shadowColor: '#1A1D24', shadowOpacity: 0.25, shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 }, elevation: 3,
+  briefPanel: {
+    position: 'absolute',
+    top: 94,
+    left: 12,
+    right: 12,
+    minHeight: 126,
+    backgroundColor: PANEL_BG,
+    borderWidth: 1,
+    borderColor: PANEL_BORDER,
+    borderRadius: radius.sm,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    shadowColor: '#1A1D24',
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 9 },
+    elevation: 4,
   },
-  catTitle: {
-    fontFamily: fontFamily.mono, fontSize: 9.5,
-    color: colors.text.tertiary, letterSpacing: 1, marginBottom: 8,
+  briefAccent: {
+    width: 5,
+    backgroundColor: colors.status.new,
+  },
+  briefCopy: {
+    flex: 1,
+    padding: 12,
+    paddingRight: 8,
+  },
+  briefKicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 5,
+  },
+  briefKickerText: {
+    fontFamily: fontFamily.monoBold,
+    fontSize: 9.5,
+    color: colors.accent.primary,
+  },
+  briefTitle: {
+    fontFamily: fontFamily.displayExtra,
+    fontSize: 16,
+    lineHeight: 20,
+    color: colors.text.primary,
+  },
+  briefDescription: {
+    fontFamily: fontFamily.body,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.text.secondary,
+    marginTop: 5,
+  },
+  briefChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+    marginTop: 9,
+  },
+  briefChip: {
+    overflow: 'hidden',
+    borderRadius: 5,
+    backgroundColor: colors.bg.secondary,
+    color: colors.text.secondary,
+    fontFamily: fontFamily.mono,
+    fontSize: 9.5,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  scoreBox: {
+    width: 88,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border.divider,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    backgroundColor: '#11171F',
+  },
+  scoreValue: {
+    fontFamily: fontFamily.displayExtra,
+    fontSize: 30,
+    lineHeight: 32,
+    color: colors.text.inverse,
+  },
+  scoreLabel: {
+    fontFamily: fontFamily.monoBold,
+    fontSize: 9,
+    color: '#B9C7D6',
+    marginTop: 1,
+  },
+  scoreSignal: {
+    fontFamily: fontFamily.bodySemiBold,
+    fontSize: 10.5,
+    lineHeight: 13,
+    color: '#FFE0A7',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+
+  metricRail: {
+    position: 'absolute',
+    top: 228,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  railItem: {
+    flex: 1,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(17,23,31,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  railValue: {
+    fontFamily: fontFamily.displayExtra,
+    fontSize: 16,
+    color: colors.text.inverse,
+  },
+  railLabel: {
+    fontFamily: fontFamily.body,
+    fontSize: 10.5,
+    color: '#C8D0DA',
+    marginTop: 1,
+  },
+
+  bottomPanel: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 92,
+    backgroundColor: PANEL_BG,
+    borderWidth: 1,
+    borderColor: PANEL_BORDER,
+    borderRadius: radius.sm,
+    padding: 12,
+    shadowColor: '#1A1D24',
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 9 },
+    elevation: 4,
+  },
+  panelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  panelTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  panelTitle: {
+    fontFamily: fontFamily.bodySemiBold,
+    fontSize: 13,
+    color: colors.text.primary,
+  },
+  modeSwitch: {
+    flexDirection: 'row',
+    borderRadius: radius.sm,
+    backgroundColor: colors.bg.secondary,
+    padding: 3,
+    gap: 3,
+  },
+  modeBtn: {
+    width: 28,
+    height: 26,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeBtnActive: {
+    backgroundColor: colors.text.primary,
   },
   catRow: { marginTop: 8 },
-  catHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 3 },
-  catLabel: {
-    flex: 1, fontFamily: fontFamily.body, fontSize: 11.5, color: colors.text.primary,
-  },
-  catPct: { fontFamily: fontFamily.mono, fontSize: 10.5, color: colors.text.tertiary },
-  barTrack: {
-    height: 4, borderRadius: 99,
-    backgroundColor: colors.border.divider, overflow: 'hidden',
-  },
-  barFill: { height: '100%', backgroundColor: colors.accent.primary },
-
-  toggleWrap: {
-    position: 'absolute', bottom: 24, left: 16,
+  catHead: {
     flexDirection: 'row',
-    backgroundColor: colors.bg.elevated,
-    borderWidth: 1, borderColor: colors.border.default,
-    borderRadius: 12, padding: 4,
-    shadowColor: '#1A1D24', shadowOpacity: 0.2, shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 }, elevation: 3,
+    alignItems: 'center',
+    marginBottom: 4,
   },
-  toggleBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9,
+  catLabel: {
+    flex: 1,
+    fontFamily: fontFamily.body,
+    fontSize: 11.5,
+    color: colors.text.primary,
   },
-  toggleBtnActive: { backgroundColor: colors.text.primary },
-  toggleText: {
-    fontFamily: fontFamily.bodyMedium, fontSize: 12, color: colors.text.secondary,
+  catPct: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10.5,
+    color: colors.text.tertiary,
   },
-  toggleTextActive: {
-    color: colors.text.inverse, fontFamily: fontFamily.bodySemiBold,
+  barTrack: {
+    height: 5,
+    borderRadius: 99,
+    backgroundColor: colors.border.divider,
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: '100%',
+    minWidth: 10,
+    borderRadius: 99,
   },
 
-  fabWrap: { position: 'absolute', bottom: 24, right: 16 },
+  fabWrap: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 22,
+  },
   fab: {
-    height: 56, borderRadius: 28,
-    paddingHorizontal: 22, paddingLeft: 18,
+    minHeight: 58,
+    borderRadius: 29,
+    paddingHorizontal: 16,
     backgroundColor: colors.accent.primary,
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    shadowColor: colors.accent.primary, shadowOpacity: 0.55, shadowRadius: 28,
-    shadowOffset: { width: 0, height: 14 }, elevation: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: colors.accent.primary,
+    shadowOpacity: 0.44,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6,
   },
+  fabSuccess: {
+    backgroundColor: colors.status.verified,
+    shadowColor: colors.status.verified,
+  },
+  fabPressed: { transform: [{ scale: 0.99 }] },
   fabIcon: {
-    width: 30, height: 30, borderRadius: 99,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center',
+    width: 34,
+    height: 34,
+    borderRadius: 99,
+    backgroundColor: 'rgba(255,255,255,0.13)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  fabCopy: { flex: 1 },
   fabText: {
-    fontFamily: fontFamily.display, fontSize: 14.5, color: colors.text.inverse,
+    fontFamily: fontFamily.display,
+    fontSize: 14.5,
+    color: colors.text.inverse,
+  },
+  fabSub: {
+    fontFamily: fontFamily.body,
+    fontSize: 11.5,
+    color: 'rgba(255,255,255,0.76)',
+    marginTop: 1,
   },
   fabBadge: {
-    paddingHorizontal: 7, paddingVertical: 3, borderRadius: 99,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 99,
     backgroundColor: 'rgba(255,255,255,0.16)',
   },
   fabBadgeText: {
-    fontFamily: fontFamily.mono, fontSize: 11, color: '#fff',
+    fontFamily: fontFamily.monoBold,
+    fontSize: 11,
+    color: '#fff',
   },
 });

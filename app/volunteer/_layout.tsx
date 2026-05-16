@@ -5,7 +5,7 @@ export default function VolunteerLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="feedback" options={{ animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="timeline" />
+      <Stack.Screen name="timeline" options={{ presentation: 'modal' }} />
       <Stack.Screen name="ticket/new" options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="pin/[id]" />
     </Stack>
