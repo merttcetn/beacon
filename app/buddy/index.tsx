@@ -3,13 +3,8 @@ import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
-import { useEffect, useRef } from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedProps,
@@ -22,13 +17,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
 import { PulseDot } from '@/components/PulseDot';
 import { Waveform } from '@/components/Waveform';
+import { BUDDY_SCRIPTS, WALK_DURATIONS, type WalkDuration } from '@/constants/buddyScripts';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily } from '@/theme';
 
-const SPOKEN_TEXT = 'Yaklaşık 5 metre ileride, sağında geniş bir çukur var.';
 const HOLD_DURATION_MS = 1000;
 const TICK_INTERVAL_MS = 125;
-
 const TICK_PATTERN: Haptics.ImpactFeedbackStyle[] = [
   Haptics.ImpactFeedbackStyle.Rigid,
   Haptics.ImpactFeedbackStyle.Rigid,
@@ -39,8 +33,25 @@ const TICK_PATTERN: Haptics.ImpactFeedbackStyle[] = [
   Haptics.ImpactFeedbackStyle.Heavy,
 ];
 
-function speakSpokenText() {
-  Speech.speak(SPOKEN_TEXT, { language: 'tr-TR', rate: 0.95, pitch: 1.0 });
+// MOCK STT "dinleme" animasyonu süresi
+const MOCK_LISTEN_MS = 1200;
+
+type BuddyScene =
+  | { kind: 'mode_select' }
+  | { kind: 'walk_duration' }
+  | { kind: 'walk_active'; duration: WalkDuration }
+  | { kind: 'sport_navigating' }
+  | { kind: 'sport_equipment'; index: number }
+  | { kind: 'sport_done' };
+
+interface ChoiceChip {
+  label: string;
+  onPress: () => void;
+}
+
+function speak(text: string) {
+  Speech.stop();
+  Speech.speak(text, { language: 'tr-TR', rate: 0.95, pitch: 1.0 });
 }
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
@@ -49,6 +60,11 @@ export default function BuddyMain() {
   useKeepAwake();
   const router = useRouter();
   const reset = useUserStore((s) => s.reset);
+
+  const [scene, setScene] = useState<BuddyScene>({ kind: 'mode_select' });
+  const [lastSpoken, setLastSpoken] = useState<string>('');
+  const [listening, setListening] = useState(false);
+  const listenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -70,7 +86,7 @@ export default function BuddyMain() {
     holdProgress.value = withTiming(0, { duration: 200 });
   }
 
-  function stop() {
+  function stopSession() {
     Speech.stop();
     reset();
     router.replace('/onboarding');
@@ -79,7 +95,6 @@ export default function BuddyMain() {
   function startHold() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     holdProgress.value = withTiming(1, { duration: HOLD_DURATION_MS });
-
     let tickIndex = 0;
     tickTimer.current = setInterval(() => {
       if (tickIndex < TICK_PATTERN.length) {
@@ -87,25 +102,40 @@ export default function BuddyMain() {
         tickIndex += 1;
       }
     }, TICK_INTERVAL_MS);
-
     holdTimer.current = setTimeout(() => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       setTimeout(() => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }, 80);
       cancelHold(true);
-      stop();
+      stopSession();
     }, HOLD_DURATION_MS);
   }
 
-  function replay() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  function mockListen(then: () => void) {
+    if (listening) return;
     Speech.stop();
-    speakSpokenText();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setListening(true);
+    if (listenTimer.current) clearTimeout(listenTimer.current);
+    listenTimer.current = setTimeout(() => {
+      setListening(false);
+      then();
+    }, MOCK_LISTEN_MS);
   }
 
   useEffect(() => {
-    speakSpokenText();
+    let text = '';
+    if (scene.kind === 'mode_select') text = BUDDY_SCRIPTS.modeQuestion;
+    // Task 3/4'te genişletilecek
+
+    if (text) {
+      setLastSpoken(text);
+      speak(text);
+    }
+  }, [scene]);
+
+  useEffect(() => {
     glow.value = withRepeat(
       withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.sin) }),
       -1,
@@ -115,23 +145,41 @@ export default function BuddyMain() {
       Speech.stop();
       if (holdTimer.current) clearTimeout(holdTimer.current);
       if (tickTimer.current) clearInterval(tickTimer.current);
+      if (listenTimer.current) clearTimeout(listenTimer.current);
     };
   }, []);
+
+  function replay() {
+    if (!lastSpoken) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    speak(lastSpoken);
+  }
+
+  const choices: ChoiceChip[] = (() => {
+    if (listening) return [];
+    if (scene.kind === 'mode_select') {
+      return [
+        { label: '1 · Spor', onPress: () => mockListen(() => setScene({ kind: 'sport_navigating' })) },
+        { label: '2 · Yürüyüş', onPress: () => mockListen(() => setScene({ kind: 'walk_duration' })) },
+      ];
+    }
+    // Task 3/4'te genişletilecek
+    return [];
+  })();
+
+  const stopEnabled = scene.kind !== 'mode_select' && scene.kind !== 'walk_duration';
 
   const progressFillStyle = useAnimatedStyle(() => ({
     width: `${holdProgress.value * 100}%`,
   }));
-
-  const glowProps = useAnimatedProps(() => ({
-    opacity: glow.value,
-  }));
+  const glowProps = useAnimatedProps(() => ({ opacity: glow.value }));
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
       <View style={styles.statusRow}>
         <View style={styles.statusChip}>
           <PulseDot color={colors.status.verified} size={8} />
-          <Text style={styles.statusLabel}>YÜRÜYÜŞ AKTİF</Text>
+          <Text style={styles.statusLabel}>BUDDY HAZIR</Text>
           <View style={styles.statusDivider} />
           <Text style={styles.statusTime}>12:34</Text>
         </View>
@@ -143,8 +191,7 @@ export default function BuddyMain() {
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Son okunan bildirimi tekrarla"
-        accessibilityHint="Buddy'nin az önce söylediğini tekrar dinlemek için dokun"
+        accessibilityLabel="Son okunan mesajı tekrarla"
         onPress={replay}
         style={styles.oval}
       >
@@ -181,20 +228,14 @@ export default function BuddyMain() {
           />
         ))}
 
-        <View
-          style={styles.speakingPill}
-          accessible={false}
-          importantForAccessibility="no"
-        >
-          <PulseDot color="#5BD4B9" size={6} duration={1200} />
-          <Text style={styles.speakingPillText}>BUDDY KONUŞUYOR</Text>
+        <View style={styles.speakingPill}>
+          <PulseDot color={listening ? '#FFB377' : '#5BD4B9'} size={6} duration={1200} />
+          <Text style={styles.speakingPillText}>
+            {listening ? 'DİNLENİYOR' : 'BUDDY KONUŞUYOR'}
+          </Text>
         </View>
 
-        <View
-          style={styles.waveformWrap}
-          accessible={false}
-          importantForAccessibility="no-hide-descendants"
-        >
+        <View style={styles.waveformWrap} pointerEvents="none">
           <Waveform />
         </View>
 
@@ -204,58 +245,51 @@ export default function BuddyMain() {
           accessibilityRole="text"
           accessibilityLiveRegion="polite"
           accessibilityLanguage="tr-TR"
-          accessibilityLabel={`Şu an okunuyor: ${SPOKEN_TEXT}`}
+          accessibilityLabel={`Şu an okunuyor: ${lastSpoken}`}
         >
           <Text style={styles.ttsLabel}>ŞU AN OKUNUYOR</Text>
-          <Text style={styles.ttsText}>
-            Yaklaşık 5 metre ileride, sağında{' '}
-            <Text style={styles.ttsHighlight}>geniş bir çukur</Text> var.
-          </Text>
-          <View style={styles.ttsMetaRow}>
-            <Ionicons name="arrow-forward" size={13} color="rgba(244,241,235,0.55)" />
-            <Text style={styles.ttsMeta}>orta öncelik · doğrulanmış pin</Text>
-          </View>
+          <Text style={styles.ttsText}>{lastSpoken}</Text>
         </View>
 
-        <View
-          style={styles.ovalFooter}
-          accessible={false}
-          importantForAccessibility="no"
-        >
-          <View style={styles.askRow}>
-            <Ionicons name="mic-outline" size={14} color="rgba(91,212,185,0.75)" />
-            <Text style={styles.askText}>Ekrana dokun → tekrar dinle</Text>
-          </View>
-          <Text style={styles.askDots}>· · ·</Text>
+        <View style={styles.ovalFooter} pointerEvents="box-none">
+          {choices.length > 0 ? (
+            <View style={styles.chipRow}>
+              {choices.map((c) => (
+                <Pressable
+                  key={c.label}
+                  onPress={c.onPress}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sesli yanıt: ${c.label}`}
+                  style={({ pressed }) => [styles.chip, pressed && { opacity: 0.7 }]}
+                >
+                  <Ionicons name="mic-outline" size={13} color="#5BD4B9" />
+                  <Text style={styles.chipText}>{c.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.askRow}>
+              <Ionicons name="ear-outline" size={14} color="rgba(91,212,185,0.75)" />
+              <Text style={styles.askText}>Ekrana dokun → tekrar dinle</Text>
+            </View>
+          )}
         </View>
       </Pressable>
 
-      <View style={styles.recentWrap}>
-        <Text style={styles.recentLabel}>AZ ÖNCE</Text>
-        <View
-          style={styles.recentCard}
-          accessible
-          accessibilityRole="text"
-          accessibilityLabel="2 dakika önce: Sarı dokunsal yüzeye girdin, 12 metre."
-        >
-          <View style={styles.recentIcon}>
-            <Ionicons name="grid" size={16} color={colors.status.verified} />
-          </View>
-          <Text style={styles.recentText}>
-            Sarı dokunsal yüzeye girdin, 12 metre.
-          </Text>
-          <Text style={styles.recentTime}>2 dk önce</Text>
-        </View>
-      </View>
-
       <View style={styles.stopWrap}>
         <Pressable
+          disabled={!stopEnabled}
           accessibilityRole="button"
-          accessibilityLabel="Yürüyüşü durdur"
-          accessibilityHint="Yürüyüş modundan çıkmak için bir saniye basılı tut"
-          onPressIn={startHold}
-          onPressOut={() => cancelHold(false)}
-          style={({ pressed }) => [styles.stopBtn, pressed && { opacity: 0.96 }]}
+          accessibilityState={{ disabled: !stopEnabled }}
+          accessibilityLabel={stopEnabled ? 'Oturumu durdur' : 'Durdur şu an pasif'}
+          accessibilityHint="Çıkmak için bir saniye basılı tut"
+          onPressIn={stopEnabled ? startHold : undefined}
+          onPressOut={stopEnabled ? () => cancelHold(false) : undefined}
+          style={({ pressed }) => [
+            styles.stopBtn,
+            !stopEnabled && styles.stopBtnDisabled,
+            pressed && stopEnabled && { opacity: 0.96 },
+          ]}
         >
           <View pointerEvents="none" style={styles.stopGradientOverlay} />
           <Animated.View
@@ -267,11 +301,13 @@ export default function BuddyMain() {
           </Animated.View>
           <View pointerEvents="none" style={styles.stopRidge} />
           <View style={styles.stopIconWrap}>
-            <Ionicons name="stop" size={20} color={colors.status.new} />
+            <Ionicons name="stop" size={20} color={stopEnabled ? colors.status.new : colors.text.tertiary} />
           </View>
           <Text style={styles.stopLabel}>DURDUR</Text>
         </Pressable>
-        <Text style={styles.stopHint}>BASILI TUT · TİTREŞİM EŞİĞİ 1SN</Text>
+        <Text style={styles.stopHint}>
+          {stopEnabled ? 'BASILI TUT · TİTREŞİM EŞİĞİ 1SN' : 'OTURUM BAŞLAMADI'}
+        </Text>
       </View>
     </SafeAreaView>
   );
@@ -293,13 +329,10 @@ const styles = StyleSheet.create({
   statusLabel: {
     fontFamily: fontFamily.monoBold, fontSize: 11, color: colors.text.primary, letterSpacing: 1.1,
   },
-  statusDivider: {
-    width: 1, height: 10, backgroundColor: 'rgba(42,157,143,0.4)',
-  },
+  statusDivider: { width: 1, height: 10, backgroundColor: 'rgba(42,157,143,0.4)' },
   statusTime: {
     fontFamily: fontFamily.monoBold, fontSize: 11.5,
-    color: colors.status.verified, letterSpacing: 0.5,
-    fontVariant: ['tabular-nums'],
+    color: colors.status.verified, letterSpacing: 0.5, fontVariant: ['tabular-nums'],
   },
   statusRight: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   locText: { fontFamily: fontFamily.body, fontSize: 12, color: colors.text.tertiary },
@@ -328,54 +361,30 @@ const styles = StyleSheet.create({
     color: 'rgba(244,241,235,0.6)', letterSpacing: 1.5, marginBottom: 12,
   },
   ttsText: {
-    fontFamily: fontFamily.display, fontSize: 25, lineHeight: 32,
+    fontFamily: fontFamily.display, fontSize: 22, lineHeight: 30,
     color: '#F4F1EB', letterSpacing: -0.25,
   },
-  ttsHighlight: {
-    color: '#FFB377',
-    textShadowColor: 'rgba(244,162,97,0.45)',
-    textShadowRadius: 8,
-    textShadowOffset: { width: 0, height: 0 },
-  },
-  ttsMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16 },
-  ttsMeta: { fontFamily: fontFamily.body, fontSize: 13, color: 'rgba(244,241,235,0.55)' },
   ovalFooter: {
     position: 'absolute', bottom: 18, left: 20, right: 20,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   askRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   askText: {
     fontFamily: fontFamily.bodyMedium, fontSize: 14,
     color: 'rgba(91,212,185,0.75)', letterSpacing: 0.2,
   },
-  askDots: {
-    fontFamily: fontFamily.mono, fontSize: 12,
-    color: 'rgba(244,241,235,0.45)', letterSpacing: 2,
+  chipRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingHorizontal: 13, paddingVertical: 9,
+    borderRadius: 99,
+    borderWidth: 1, borderColor: 'rgba(91,212,185,0.45)',
+    backgroundColor: 'rgba(91,212,185,0.08)',
   },
-  recentWrap: { marginHorizontal: 16, marginTop: 14, gap: 8 },
-  recentLabel: {
-    fontFamily: fontFamily.mono, fontSize: 13,
-    color: colors.text.secondary, letterSpacing: 1.6, paddingHorizontal: 4,
+  chipText: {
+    fontFamily: fontFamily.bodyMedium, fontSize: 13.5,
+    color: '#F4F1EB', letterSpacing: 0.2,
   },
-  recentCard: {
-    backgroundColor: colors.bg.elevated, borderWidth: 1, borderColor: colors.border.divider,
-    borderLeftWidth: 3, borderLeftColor: colors.status.verified,
-    borderRadius: 14, paddingVertical: 10, paddingLeft: 14, paddingRight: 14,
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-  },
-  recentIcon: {
-    width: 30, height: 30, borderRadius: 8,
-    backgroundColor: colors.status.verified + '18',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  recentText: {
-    flex: 1, fontFamily: fontFamily.body, fontSize: 13.5,
-    color: colors.text.secondary, lineHeight: 18,
-  },
-  recentTime: { fontFamily: fontFamily.mono, fontSize: 10.5, color: colors.text.tertiary },
-  stopWrap: {
-    marginTop: 'auto', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 34,
-  },
+  stopWrap: { marginTop: 'auto', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 34 },
   stopBtn: {
     width: '100%', height: 96, borderRadius: 24,
     backgroundColor: colors.status.new,
@@ -383,6 +392,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden', position: 'relative',
     shadowColor: colors.status.new, shadowOpacity: 0.45, shadowRadius: 32,
     shadowOffset: { width: 0, height: 14 }, elevation: 10,
+  },
+  stopBtnDisabled: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    shadowOpacity: 0,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   stopGradientOverlay: {
     position: 'absolute', left: 0, right: 0, top: '38%', bottom: 0,
@@ -396,13 +411,9 @@ const styles = StyleSheet.create({
     position: 'absolute', left: 0, top: 0, bottom: 0,
     flexDirection: 'row',
   },
-  stopProgressFill: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.32)',
-  },
+  stopProgressFill: { flex: 1, backgroundColor: 'rgba(255,255,255,0.32)' },
   stopProgressEdge: {
-    width: 2,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    width: 2, backgroundColor: 'rgba(255,255,255,0.7)',
     shadowColor: '#fff', shadowOpacity: 0.8, shadowRadius: 6,
     shadowOffset: { width: 0, height: 0 },
   },
