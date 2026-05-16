@@ -56,7 +56,9 @@ export default function RootLayout() {
               headerShown: false,
               contentStyle: { backgroundColor: colors.bg.primary },
             }}
-          />
+          >
+            <Stack.Screen name="volunteer" options={{ gestureEnabled: false }} />
+          </Stack>
           <StatusBar style="dark" />
         </QueryClientProvider>
       </SafeAreaProvider>

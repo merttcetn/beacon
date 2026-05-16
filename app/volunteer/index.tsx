@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { ChevronLeft } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppMap, type AppMapMarker } from '@/components/AppMap';
+import { DockBar } from '@/components/DockBar';
 import { SAMPLE_TICKETS } from '@/constants/sampleTickets';
 import { useTicketStore } from '@/stores/ticketStore';
 import { colors, fontFamily } from '@/theme';
@@ -20,14 +22,43 @@ function toMarker(t: Ticket): AppMapMarker {
     id: t.id,
     latitude: t.location.latitude,
     longitude: t.location.longitude,
-    title: t.description_tr,
-    description: `${t.verification_count} doğrulama · ${t.severity}`,
     pinColor: pinColor(t.verified, t.verification_count),
   };
 }
 
+interface VolunteerMapHeaderProps {
+  onBack: () => void;
+}
+
+function VolunteerMapHeader({ onBack }: VolunteerMapHeaderProps) {
+  return (
+    <SafeAreaView edges={['top']} style={styles.headerSafe} pointerEvents="box-none">
+      <View style={styles.headerBar}>
+        <Pressable
+          style={styles.headerIconButton}
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Geri"
+        >
+          <ChevronLeft size={21} color={colors.text.inverse} strokeWidth={2.3} />
+        </Pressable>
+
+        <View style={styles.headerBrand} pointerEvents="none">
+          <View style={styles.headerDots}>
+            <View style={[styles.headerDot, { backgroundColor: colors.role.visuallyImpaired }]} />
+            <View style={[styles.headerDot, { backgroundColor: colors.role.volunteer }]} />
+            <View style={[styles.headerDot, { backgroundColor: colors.role.company }]} />
+          </View>
+          <Text style={styles.headerTitle}>erişim</Text>
+        </View>
+
+        <View style={styles.headerSpacer} />
+      </View>
+    </SafeAreaView>
+  );
+}
+
 export default function VolunteerMap() {
-  const [mode, setMode] = useState<'pin' | 'heat'>('pin');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const router = useRouter();
   const userTickets = useTicketStore((s) => s.userTickets);
@@ -43,9 +74,20 @@ export default function VolunteerMap() {
       null
     : null;
 
+  function handleBack() {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace('/onboarding');
+  }
+
   return (
     <View style={styles.root}>
       <AppMap markers={markers} onMarkerTap={setSelectedId} />
+
+      <VolunteerMapHeader onBack={handleBack} />
 
       {selectedTicket ? (
         <SafeAreaView edges={['top']} style={styles.previewSafe} pointerEvents="box-none">
@@ -76,46 +118,12 @@ export default function VolunteerMap() {
       ) : null}
 
       <View style={styles.bottomLeft} pointerEvents="box-none">
-        <View style={styles.toggleGroup}>
-          <Pressable
-            style={[styles.toggleBtn, mode === 'pin' && styles.toggleBtnActive]}
-            onPress={() => setMode('pin')}
-          >
-            <Ionicons
-              name="location"
-              size={20}
-              color={mode === 'pin' ? colors.text.inverse : colors.text.secondary}
-            />
-          </Pressable>
-          <Pressable
-            style={[styles.toggleBtn, mode === 'heat' && styles.toggleBtnActive]}
-            onPress={() => setMode('heat')}
-          >
-            <Ionicons
-              name="flame"
-              size={20}
-              color={mode === 'heat' ? colors.text.inverse : colors.text.secondary}
-            />
-          </Pressable>
-        </View>
         <Pressable style={styles.locateBtn}>
           <Ionicons name="locate" size={20} color={colors.accent.primary} />
         </Pressable>
       </View>
 
-      <View style={styles.bottomRight} pointerEvents="box-none">
-        <Pressable
-          style={styles.fab}
-          onPress={() => router.push('/volunteer/feedback')}
-          accessibilityRole="button"
-          accessibilityLabel="Problem bildir"
-        >
-          <View style={styles.fabIcon}>
-            <Ionicons name="add" size={18} color={colors.text.inverse} />
-          </View>
-          <Text style={styles.fabText}>Problem Bildir</Text>
-        </Pressable>
-      </View>
+      <DockBar />
     </View>
   );
 }
@@ -123,9 +131,70 @@ export default function VolunteerMap() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg.primary },
 
+  headerSafe: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 4,
+  },
+  headerBar: {
+    height: 44,
+    width: 184,
+    marginTop: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(17,23,31,0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 5,
+    shadowColor: '#1A1D24',
+    shadowOpacity: 0.24,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  headerIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerBrand: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  headerDots: {
+    flexDirection: 'row',
+    gap: 2.5,
+  },
+  headerDot: {
+    width: 5.5,
+    height: 5.5,
+    borderRadius: 99,
+  },
+  headerTitle: {
+    fontFamily: fontFamily.displayExtra,
+    fontSize: 14,
+    color: colors.text.inverse,
+    letterSpacing: 0.2,
+  },
+  headerSpacer: {
+    width: 34,
+    height: 34,
+  },
+
   previewSafe: { position: 'absolute', top: 0, left: 0, right: 0 },
   previewCard: {
-    marginTop: 8, marginHorizontal: 16,
+    marginTop: 60, marginHorizontal: 16,
     height: 64, borderRadius: 16,
     backgroundColor: colors.bg.elevated,
     borderWidth: 1, borderColor: colors.border.default,
@@ -152,16 +221,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
-  bottomLeft: { position: 'absolute', bottom: 24, left: 16, gap: 8 },
-  toggleGroup: {
-    backgroundColor: colors.bg.elevated,
-    borderWidth: 1, borderColor: colors.border.default,
-    borderRadius: 12, padding: 4,
-    shadowColor: '#1A1D24', shadowOpacity: 0.2, shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 }, elevation: 3,
-  },
-  toggleBtn: { width: 44, height: 44, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  toggleBtnActive: { backgroundColor: colors.text.primary },
+  bottomLeft: { position: 'absolute', bottom: 96, left: 16, gap: 8 },
   locateBtn: {
     width: 44, height: 44, borderRadius: 12,
     backgroundColor: colors.bg.elevated,
@@ -170,19 +230,4 @@ const styles = StyleSheet.create({
     shadowColor: '#1A1D24', shadowOpacity: 0.2, shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 }, elevation: 3,
   },
-  bottomRight: { position: 'absolute', bottom: 24, right: 16 },
-  fab: {
-    height: 56, borderRadius: 28,
-    paddingHorizontal: 22, paddingLeft: 18,
-    backgroundColor: colors.accent.primary,
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    shadowColor: colors.accent.primary, shadowOpacity: 0.55, shadowRadius: 28,
-    shadowOffset: { width: 0, height: 14 }, elevation: 6,
-  },
-  fabIcon: {
-    width: 32, height: 32, borderRadius: 99,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  fabText: { fontFamily: fontFamily.display, fontSize: 16, color: colors.text.inverse },
 });

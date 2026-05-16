@@ -23,9 +23,6 @@ import { PulseDot } from '@/components/PulseDot';
 import { ANKARA_LANDMARKS } from '@/constants/region';
 import { colors, fontFamily, radius, spacing } from '@/theme';
 
-const NUDGE_TOTAL = 12;
-const NUDGE_INDEX = 4;
-
 const FALLBACK_COORDS = ANKARA_LANDMARKS.odtuTeknokent;
 
 export default function FeedbackCamera() {
@@ -142,35 +139,6 @@ export default function FeedbackCamera() {
         facing={facing}
       />
 
-      {/* Gözünü Eğit üst kart */}
-      <SafeAreaView edges={['top']} style={styles.topSafe} pointerEvents="box-none">
-        <View style={styles.eyeTrainCard}>
-          <View style={styles.eyeIcon}>
-            <Ionicons name="eye-outline" size={20} color={colors.role.volunteer} />
-          </View>
-          <View style={styles.eyeTextWrap}>
-            <Text style={styles.eyeLabel}>
-              GÖZÜNÜ EĞİT · {NUDGE_INDEX} / {NUDGE_TOTAL}
-            </Text>
-            <Text style={styles.eyeText}>
-              Tekerlekli sandalye için 2 cm yükseklik farkı aşılmazdır.
-            </Text>
-          </View>
-        </View>
-        <View style={styles.progressDots}>
-          {Array.from({ length: NUDGE_TOTAL }).map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.progressDot,
-                i === NUDGE_INDEX - 1 && styles.progressDotActive,
-                i < NUDGE_INDEX && { backgroundColor: '#FAF7F2' },
-              ]}
-            />
-          ))}
-        </View>
-      </SafeAreaView>
-
       {/* Kapat */}
       <SafeAreaView edges={['top']} style={styles.closeSafe} pointerEvents="box-none">
         <Pressable style={styles.closeBtn} onPress={() => router.back()}>
@@ -279,42 +247,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(250,247,242,0.6)',
   },
-
-  topSafe: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 16 },
-  eyeTrainCard: {
-    marginTop: spacing.s2,
-    backgroundColor: colors.bg.primary,
-    borderRadius: radius.lg,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 28,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
-  },
-  eyeIcon: {
-    width: 38, height: 38, borderRadius: 10,
-    backgroundColor: colors.role.volunteer + '18',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  eyeTextWrap: { flex: 1 },
-  eyeLabel: {
-    fontFamily: fontFamily.mono, fontSize: 10.5,
-    color: colors.text.tertiary, letterSpacing: 1.5, marginBottom: 2,
-  },
-  eyeText: {
-    fontFamily: fontFamily.bodyMedium, fontSize: 13.5,
-    color: colors.text.primary, lineHeight: 18,
-  },
-  progressDots: {
-    flexDirection: 'row', gap: 3, marginTop: 8, justifyContent: 'center',
-  },
-  progressDot: {
-    width: 6, height: 3, borderRadius: 99,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  progressDotActive: { width: 18, backgroundColor: '#FAF7F2' },
 
   closeSafe: { position: 'absolute', top: 0, right: 16 },
   closeBtn: {

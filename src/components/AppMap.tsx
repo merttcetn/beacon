@@ -22,8 +22,6 @@ export interface AppMapMarker {
   id: string;
   latitude: number;
   longitude: number;
-  title?: string;
-  description?: string;
   pinColor?: string;
 }
 
@@ -63,8 +61,6 @@ export const AppMap = forwardRef<MapView, Props>(function AppMap(
         <Marker
           key={m.id}
           coordinate={{ latitude: m.latitude, longitude: m.longitude }}
-          title={m.title}
-          description={m.description}
           pinColor={m.pinColor}
           onPress={() => onMarkerTap?.(m.id)}
         />
