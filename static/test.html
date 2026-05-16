@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Servisi — Test Konsolu</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 760px;
+         margin: 0 auto; padding: 1rem 1.2rem 4rem; background: #0f1115; color: #e8e8e8; }
+  h1 { font-size: 1.3rem; }
+  p.muted, .muted { color: #9aa4b2; font-size: .85rem; }
+  section { background: #1a1d24; border: 1px solid #2a2e38; border-radius: 10px;
+            padding: 1rem 1.1rem; margin: 1rem 0; }
+  h2 { font-size: 1.05rem; margin: 0 0 .6rem; }
+  label { display: block; font-size: .82rem; margin: .55rem 0 .2rem; color: #9aa4b2; }
+  input, select, textarea, button { font-size: 1rem; padding: .5rem .6rem;
+    border-radius: 6px; border: 1px solid #3a3f4b; background: #10131a; color: #e8e8e8; }
+  textarea { width: 100%; box-sizing: border-box; }
+  button { background: #2563eb; border: none; cursor: pointer; font-weight: 600; }
+  button:hover { background: #1d4ed8; }
+  button.sec { background: #374151; }
+  button.rec { background: #b91c1c; }
+  .row { display: flex; gap: .7rem; flex-wrap: wrap; align-items: flex-end; }
+  .out { white-space: pre-wrap; background: #0b0d12; border: 1px solid #2a2e38;
+         border-radius: 6px; padding: .7rem; margin-top: .6rem; font-size: .88rem;
+         min-height: 1.2rem; }
+  .actions { margin-top: .6rem; display: flex; gap: .5rem; flex-wrap: wrap; }
+  video { width: 100%; max-height: 340px; margin-top: .6rem; border-radius: 8px;
+          background: #000; }
+  .frame { display: flex; gap: .6rem; background: #0b0d12; border: 1px solid #2a2e38;
+           border-radius: 8px; padding: .5rem; margin: .4rem 0; }
+  .frame img { width: 150px; height: auto; border-radius: 4px; flex-shrink: 0;
+               align-self: flex-start; }
+  .frame .info { font-size: .86rem; }
+  .frame .res { margin-top: .3rem; color: #cdd5e0; }
+  .badge { display: inline-block; padding: .06rem .45rem; border-radius: 4px;
+           font-size: .72rem; font-weight: 700; }
+  .badge.proc { background: #b45309; }
+  .badge.done { background: #15803d; }
+  .badge.err  { background: #b91c1c; }
+</style>
+</head>
+<body>
+<h1>🦮 AI Servisi — Test Konsolu</h1>
+<p class="muted">Her endpoint'i gerçek fotoğraf/ses ile test et. Çıktılar server-side TTS ile seslendirilir.</p>
+
+<section>
+  <h2>Buddy Mode — <code>/buddy/analyze</code></h2>
+  <label>Kare — kaldırım / sokak fotoğrafı</label>
+  <input type="file" id="buddyFrame" accept="image/*" />
+  <div class="row">
+    <div><label>lat</label><input id="buddyLat" value="40.9905" size="11" /></div>
+    <div><label>lon</label><input id="buddyLon" value="29.0270" size="11" /></div>
+  </div>
+  <p class="muted">Varsayılan konum = Kadıköy seed kümesi (known_issues testi için).</p>
+  <div class="actions">
+    <button onclick="buddy()">Analiz Et</button>
+    <button class="sec" id="buddyListen" style="display:none" onclick="playTTS(lastSpeak.buddy)">🔊 Dinle</button>
+  </div>
+  <div class="out" id="buddyOut"></div>
+</section>
+
+<section>
+  <h2>Buddy Mode — Video — gerçek zamanlı simülasyon</h2>
+  <label>Yürüyüş videosu (.mov / .mp4)</label>
+  <input type="file" id="videoFile" accept="video/*" />
+  <div class="row">
+    <div><label>Kare aralığı (sn)</label><input id="videoInterval" type="number" value="5" min="1" size="4" /></div>
+    <div><label><input type="checkbox" id="videoTTS" checked /> Sesli oku</label></div>
+  </div>
+  <p class="muted">Video oynatılır; her N saniyede o anki kare yakalanır → <code>/buddy/analyze</code> → sesli okunur.
+    Her kare için tam süreç görünür: <b>VLM süresi + TTS süresi + toplam latency</b>. Saf kare analizi
+    (seed yok). En yeni kare en üstte.</p>
+  <div class="actions"><button onclick="startVideoSim()">Başlat</button></div>
+  <video id="videoPlayer" controls playsinline style="display:none"></video>
+  <div id="videoStatus" class="muted" style="margin-top:.5rem"></div>
+  <div id="videoLog"></div>
+</section>
+
+<section>
+  <h2>Voice Q&amp;A — <code>/voice/ask</code> + <code>/stt</code></h2>
+  <label>Soru — yaz ya da mikrofonla kaydet (kayıt varsa fal.ai Scribe ile transkript edilir)</label>
+  <textarea id="voiceQ" rows="2">Önümde ne var?</textarea>
+  <div class="row">
+    <div><label>screen_context</label>
+      <select id="voiceCtx">
+        <option>idle</option><option>buddy_mode</option><option>sport_mode</option>
+      </select>
+    </div>
+    <div><label>Frame (opsiyonel)</label><input type="file" id="voiceFrame" accept="image/*" /></div>
+  </div>
+  <div class="actions">
+    <button onclick="voice()">Sor</button>
+    <button class="sec" id="recBtn" onclick="toggleRecord()">🎙 Kaydet</button>
+    <button class="sec" id="voiceListen" style="display:none" onclick="playTTS(lastSpeak.voice)">🔊 Dinle</button>
+  </div>
+  <div id="recStatus" class="muted" style="margin-top:.4rem"></div>
+  <div class="out" id="voiceOut"></div>
+</section>
+
+<section>
+  <h2>Feedback — <code>/feedback/categorize</code></h2>
+  <label>1-3 problem fotoğrafı (çukur, bozuk rampa, engel...)</label>
+  <input type="file" id="fbPhotos" accept="image/*" multiple />
+  <div class="actions"><button onclick="feedback()">Kategorize Et</button></div>
+  <div class="out" id="fbOut"></div>
+</section>
+
+<section>
+  <h2>Spor — <code>/sport/describe</code></h2>
+  <label>Spor aleti fotoğrafı</label>
+  <input type="file" id="sportPhoto" accept="image/*" />
+  <div class="actions">
+    <button onclick="sport()">Anlat</button>
+    <button class="sec" id="sportListen" style="display:none" onclick="playTTS(lastSpeak.sport)">🔊 Dinle</button>
+  </div>
+  <div class="out" id="sportOut"></div>
+</section>
+
+<script>
+const lastSpeak = {};
+let currentAudio = null;
+
+// /tts ile seslendirir, öncekini durdurur; geçen süreyi (ms) döndürür.
+async function speak(text) {
+  if (!text || !text.trim()) return null;
+  const started = performance.now();
+  const fd = new FormData();
+  fd.append("text", text);
+  const r = await fetch("/tts", { method: "POST", body: fd });
+  if (!r.ok) return null;
+  if (currentAudio) currentAudio.pause();
+  currentAudio = new Audio(URL.createObjectURL(await r.blob()));
+  currentAudio.play().catch(() => {});
+  return Math.round(performance.now() - started);
+}
+
+async function playTTS(text) {
+  if (!text || !text.trim()) { alert("Seslendirilecek metin yok."); return; }
+  speak(text);
+}
+
+function render(key, data, speakField) {
+  document.getElementById(key + "Out").textContent = JSON.stringify(data, null, 2);
+  const listen = document.getElementById(key + "Listen");
+  if (listen) {
+    lastSpeak[key] = (speakField && data[speakField]) || "";
+    listen.style.display = lastSpeak[key] ? "inline-block" : "none";
+  }
+}
+
+async function call(url, fd, key, speakField) {
+  const out = document.getElementById(key + "Out");
+  out.textContent = "İşleniyor... (Gemini çağrısı)";
+  const started = performance.now();
+  try {
+    const r = await fetch(url, { method: "POST", body: fd });
+    const data = await r.json();
+    render(key, data, speakField);
+    out.textContent += "\n\n— " + r.status + ", " + Math.round(performance.now() - started) + " ms";
+  } catch (e) {
+    out.textContent = "HATA: " + e;
+  }
+}
+
+function buddy() {
+  const f = document.getElementById("buddyFrame").files[0];
+  if (!f) { alert("Bir görsel seç."); return; }
+  const fd = new FormData();
+  fd.append("frame", f);
+  const lat = document.getElementById("buddyLat").value.trim();
+  const lon = document.getElementById("buddyLon").value.trim();
+  if (lat) fd.append("lat", lat);
+  if (lon) fd.append("lon", lon);
+  call("/buddy/analyze", fd, "buddy", "speak_text");
+}
+
+// --- Buddy Video: gerçek zamanlı simülasyon ---
+
+function startVideoSim() {
+  const f = document.getElementById("videoFile").files[0];
+  if (!f) { alert("Bir video seç."); return; }
+  const player = document.getElementById("videoPlayer");
+  const status = document.getElementById("videoStatus");
+  document.getElementById("videoLog").innerHTML = "";
+  player.style.display = "block";
+  player.src = URL.createObjectURL(f);
+
+  const interval = Math.max(1, parseInt(document.getElementById("videoInterval").value, 10) || 5);
+  let nextCapture = 0;
+
+  player.onplay = () => {
+    status.textContent = "Oynatılıyor — her " + interval + " sn'de kare gönderiliyor + seslendiriliyor...";
+  };
+  player.onended = () => { status.textContent = "Video bitti. ✓"; };
+  player.ontimeupdate = () => {
+    if (player.currentTime >= nextCapture) {
+      const t = nextCapture;
+      nextCapture += interval;
+      captureAndAnalyze(player, t);
+    }
+  };
+  player.play().catch((e) => {
+    status.textContent = "Video oynatılamadı (codec?): " + e;
+  });
+}
+
+async function captureAndAnalyze(player, t) {
+  if (!player.videoWidth) return;
+  const scale = 1024 / player.videoWidth;
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = Math.round(player.videoHeight * scale);
+  canvas.getContext("2d").drawImage(player, 0, 0, canvas.width, canvas.height);
+  const thumb = canvas.toDataURL("image/jpeg", 0.5);
+  const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.85));
+
+  const card = document.createElement("div");
+  card.className = "frame";
+  card.innerHTML =
+    '<img src="' + thumb + '" />' +
+    '<div class="info"><b>' + t.toFixed(0) + ' sn</b> ' +
+    '<span class="badge proc">⏳ VLM...</span>' +
+    '<div class="res"></div></div>';
+  document.getElementById("videoLog").prepend(card);
+  const badge = card.querySelector(".badge");
+
+  const fd = new FormData();
+  fd.append("frame", blob, "frame.jpg");
+  try {
+    const t0 = performance.now();
+    const r = await fetch("/buddy/analyze", { method: "POST", body: fd });
+    const data = await r.json();
+    const vlmMs = Math.round(performance.now() - t0);
+    card.querySelector(".res").textContent = data.speak_text || "(sessiz)";
+
+    let line = (data.priority || "").toUpperCase() + " · VLM " + vlmMs + "ms";
+    if (document.getElementById("videoTTS").checked && data.speak_text) {
+      badge.textContent = "⏳ TTS...";
+      const ttsMs = await speak(data.speak_text);
+      if (ttsMs !== null) {
+        line += " · TTS " + ttsMs + "ms · toplam " + (vlmMs + ttsMs) + "ms";
+      }
+    }
+    badge.className = "badge done";
+    badge.textContent = line;
+  } catch (e) {
+    badge.className = "badge err";
+    badge.textContent = "HATA";
+    card.querySelector(".res").textContent = String(e);
+  }
+}
+
+// --- Voice Q&A: yaz veya mikrofonla kaydet ---
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordedBlob = null;
+
+async function toggleRecord() {
+  const btn = document.getElementById("recBtn");
+  const status = document.getElementById("recStatus");
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    mediaRecorder.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      recordedBlob = new Blob(recordedChunks, { type: mediaRecorder.mimeType });
+      stream.getTracks().forEach((tr) => tr.stop());
+      btn.textContent = "🎙 Kaydet";
+      btn.className = "sec";
+      status.textContent = "Ses hazır (" + Math.round(recordedBlob.size / 1024) +
+        " KB) — 'Sor'a bas, fal.ai Scribe ile transkript edilecek.";
+    };
+    mediaRecorder.start();
+    btn.textContent = "⏹ Durdur";
+    btn.className = "rec";
+    status.textContent = "🔴 Kaydediliyor...";
+  } catch (e) {
+    status.textContent = "Mikrofon erişilemedi: " + e;
+  }
+}
+
+async function voice() {
+  const out = document.getElementById("voiceOut");
+  const ctx = document.getElementById("voiceCtx").value;
+  const frameFile = document.getElementById("voiceFrame").files[0];
+  let transcript = document.getElementById("voiceQ").value.trim();
+
+  // Kayıt varsa: önce STT (transkript görünür), sonra Q&A.
+  if (recordedBlob) {
+    out.textContent = "Ses transkript ediliyor (fal.ai Scribe)...";
+    const sttFd = new FormData();
+    sttFd.append("audio", recordedBlob, "kayit.webm");
+    const blobUsed = recordedBlob;
+    recordedBlob = null;
+    document.getElementById("recStatus").textContent = "";
+    const t0 = performance.now();
+    try {
+      const sr = await fetch("/stt", { method: "POST", body: sttFd });
+      const sd = await sr.json();
+      transcript = (sd.transcript || "").trim();
+    } catch (e) {
+      out.textContent = "STT HATA: " + e;
+      return;
+    }
+    const sttMs = Math.round(performance.now() - t0);
+    out.textContent = "📝 STT (" + Math.round(blobUsed.size / 1024) + " KB, " + sttMs +
+      "ms): " + (transcript || "(boş)") + "\n\n";
+    if (!transcript) { out.textContent += "STT boş döndü — tekrar dene."; return; }
+    document.getElementById("voiceQ").value = transcript;
+  } else {
+    out.textContent = "";
+  }
+
+  if (!transcript) { alert("Soru yaz ya da mikrofonla kaydet."); return; }
+
+  const fd = new FormData();
+  fd.append("transcript", transcript);
+  fd.append("screen_context", ctx);
+  if (frameFile) fd.append("frame", frameFile);
+  const t1 = performance.now();
+  try {
+    const r = await fetch("/voice/ask", { method: "POST", body: fd });
+    const data = await r.json();
+    out.textContent += JSON.stringify(data, null, 2) +
+      "\n\n— /voice/ask " + Math.round(performance.now() - t1) + " ms";
+    lastSpeak.voice = data.answer_speak_text || "";
+    document.getElementById("voiceListen").style.display =
+      lastSpeak.voice ? "inline-block" : "none";
+    if (lastSpeak.voice) speak(lastSpeak.voice);
+  } catch (e) {
+    out.textContent += "HATA: " + e;
+  }
+}
+
+function feedback() {
+  const files = document.getElementById("fbPhotos").files;
+  if (!files.length) { alert("En az 1 fotoğraf seç."); return; }
+  const fd = new FormData();
+  for (const f of files) fd.append("photos", f);
+  call("/feedback/categorize", fd, "fb", null);
+}
+
+function sport() {
+  const f = document.getElementById("sportPhoto").files[0];
+  if (!f) { alert("Bir görsel seç."); return; }
+  const fd = new FormData();
+  fd.append("photo", f);
+  call("/sport/describe", fd, "sport", "speak_text");
+}
+</script>
+</body>
+</html>
