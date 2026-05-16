@@ -127,12 +127,26 @@ export default function BuddyMain() {
   useEffect(() => {
     let text = '';
     if (scene.kind === 'mode_select') text = BUDDY_SCRIPTS.modeQuestion;
-    // Task 3/4'te genişletilecek
+    else if (scene.kind === 'walk_duration') text = BUDDY_SCRIPTS.walkDurationQuestion;
+    else if (scene.kind === 'walk_active') text = BUDDY_SCRIPTS.walkRouteFound(scene.duration);
 
     if (text) {
       setLastSpoken(text);
       speak(text);
     }
+  }, [scene]);
+
+  useEffect(() => {
+    if (scene.kind !== 'walk_active') return;
+    let i = 0;
+    const id = setInterval(() => {
+      const warnings = BUDDY_SCRIPTS.walkWarnings;
+      const text = warnings[i % warnings.length];
+      i += 1;
+      setLastSpoken(text);
+      speak(text);
+    }, 8000);
+    return () => clearInterval(id);
   }, [scene]);
 
   useEffect(() => {
@@ -163,7 +177,12 @@ export default function BuddyMain() {
         { label: '2 · Yürüyüş', onPress: () => mockListen(() => setScene({ kind: 'walk_duration' })) },
       ];
     }
-    // Task 3/4'te genişletilecek
+    if (scene.kind === 'walk_duration') {
+      return WALK_DURATIONS.map((d) => ({
+        label: `${d} dk`,
+        onPress: () => mockListen(() => setScene({ kind: 'walk_active', duration: d })),
+      }));
+    }
     return [];
   })();
 
