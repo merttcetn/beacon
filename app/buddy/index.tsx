@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useRouter } from 'expo-router';
-import * as Speech from 'expo-speech';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -23,6 +22,7 @@ import {
   WALK_DURATIONS,
   type WalkDuration,
 } from '@/constants/buddyScripts';
+import { speakTts, stopTts } from '@/lib/tts';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily } from '@/theme';
 
@@ -55,8 +55,7 @@ interface ChoiceChip {
 }
 
 function speak(text: string) {
-  Speech.stop();
-  Speech.speak(text, { language: 'tr-TR', rate: 0.95, pitch: 1.0 });
+  void speakTts(text);
 }
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
@@ -92,7 +91,7 @@ export default function BuddyMain() {
   }
 
   function stopSession() {
-    Speech.stop();
+    void stopTts();
     reset();
     router.replace('/onboarding');
   }
@@ -119,7 +118,7 @@ export default function BuddyMain() {
 
   function mockListen(then: () => void) {
     if (listening) return;
-    Speech.stop();
+    void stopTts();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setListening(true);
     if (listenTimer.current) clearTimeout(listenTimer.current);
@@ -177,7 +176,7 @@ export default function BuddyMain() {
       true,
     );
     return () => {
-      Speech.stop();
+      void stopTts();
       if (holdTimer.current) clearTimeout(holdTimer.current);
       if (tickTimer.current) clearInterval(tickTimer.current);
       if (listenTimer.current) clearTimeout(listenTimer.current);
