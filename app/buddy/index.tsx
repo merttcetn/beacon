@@ -17,7 +17,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
 import { PulseDot } from '@/components/PulseDot';
 import { Waveform } from '@/components/Waveform';
-import { BUDDY_SCRIPTS, WALK_DURATIONS, type WalkDuration } from '@/constants/buddyScripts';
+import {
+  BUDDY_SCRIPTS,
+  SPORT_EQUIPMENTS,
+  WALK_DURATIONS,
+  type WalkDuration,
+} from '@/constants/buddyScripts';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily } from '@/theme';
 
@@ -129,6 +134,14 @@ export default function BuddyMain() {
     if (scene.kind === 'mode_select') text = BUDDY_SCRIPTS.modeQuestion;
     else if (scene.kind === 'walk_duration') text = BUDDY_SCRIPTS.walkDurationQuestion;
     else if (scene.kind === 'walk_active') text = BUDDY_SCRIPTS.walkRouteFound(scene.duration);
+    else if (scene.kind === 'sport_navigating') text = BUDDY_SCRIPTS.sportSearching;
+    else if (scene.kind === 'sport_equipment') {
+      const eq = SPORT_EQUIPMENTS[scene.index];
+      text = scene.index === 0
+        ? `${BUDDY_SCRIPTS.sportArrived} ${eq.speakText}`
+        : `${BUDDY_SCRIPTS.sportNextCue} ${eq.speakText}`;
+    }
+    else if (scene.kind === 'sport_done') text = BUDDY_SCRIPTS.sportDone;
 
     if (text) {
       setLastSpoken(text);
@@ -147,6 +160,14 @@ export default function BuddyMain() {
       speak(text);
     }, 8000);
     return () => clearInterval(id);
+  }, [scene]);
+
+  useEffect(() => {
+    if (scene.kind !== 'sport_navigating') return;
+    const id = setTimeout(() => {
+      setScene({ kind: 'sport_equipment', index: 0 });
+    }, 6000);
+    return () => clearTimeout(id);
   }, [scene]);
 
   useEffect(() => {
@@ -182,6 +203,15 @@ export default function BuddyMain() {
         label: `${d} dk`,
         onPress: () => mockListen(() => setScene({ kind: 'walk_active', duration: d })),
       }));
+    }
+    if (scene.kind === 'sport_equipment') {
+      const next = scene.index + 1;
+      const goNext = next >= SPORT_EQUIPMENTS.length
+        ? () => setScene({ kind: 'sport_done' })
+        : () => setScene({ kind: 'sport_equipment', index: next });
+      return [
+        { label: 'Sıradaki hareket', onPress: () => mockListen(goNext) },
+      ];
     }
     return [];
   })();
