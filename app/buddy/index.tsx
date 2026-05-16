@@ -297,7 +297,9 @@ export default function BuddyMain() {
           accessibilityLabel={`Şu an okunuyor: ${lastSpoken}`}
         >
           <Text style={styles.ttsLabel}>ŞU AN OKUNUYOR</Text>
-          <Text style={styles.ttsText}>{lastSpoken}</Text>
+          <Text style={styles.ttsText}>
+            {lastSpoken || (listening ? 'Dinliyorum…' : '...')}
+          </Text>
         </View>
 
         <View style={styles.ovalFooter} pointerEvents="box-none">
