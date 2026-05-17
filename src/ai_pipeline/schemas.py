@@ -88,3 +88,72 @@ class SportDescription(BaseModel):
         default="",
         description="TTS'e gidecek doğal, akıcı Türkçe paragraf, 4-6 cümle.",
     )
+
+
+Intent = Literal[
+    "ask",
+    "describe_sport",
+    "report_issue",
+    "nearby_tickets",
+    "switch_mode",
+    "stop",
+    "unknown",
+]
+UiAction = Literal[
+    "none",
+    "open_ticket",
+    "switch_to_buddy",
+    "switch_to_sport",
+]
+TargetMode = Literal["buddy", "sport", "none"]
+
+
+class NearbyTicket(BaseModel):
+    """UI'nin gönderdiği, kullanıcının çevresindeki kayıtlı ticket — orchestrator girdisi."""
+
+    issue_type: IssueType = "other"
+    severity: Severity = "medium"
+    description_tr: str = ""
+    distance_m: float | None = None
+
+
+class OrchestratorDecision(BaseModel):
+    """Orchestrator LLM çağrısının structured çıktısı (niyet + opsiyonel çevre özeti)."""
+
+    intent: Intent = "unknown"
+    target_mode: TargetMode = "none"
+    nearby_tickets_speak_text: str = Field(
+        default="",
+        description="Yalnızca report_issue / nearby_tickets niyetinde doldurulur; yoksa boş.",
+    )
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class Ticket(BaseModel):
+    """Sesli bildirimle oluşturulacak ticket — UI bunu n8n'e iletir (boundary entity)."""
+
+    issue_type: IssueType = "other"
+    severity: Severity = "medium"
+    affected_users: list[AffectedUser] = Field(default_factory=list)
+    description_tr: str = ""
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    lat: float | None = None
+    lon: float | None = None
+    source: str = Field(
+        default="user_visually_impaired",
+        description="DB tickets.source (spec §5.3) — sesli bildirim hep kör kullanıcı.",
+    )
+
+
+class AssistResponse(BaseModel):
+    """POST /v1/assist birleşik yanıt zarfı — UI tek response şekliyle çalışır."""
+
+    event: str
+    intent: str = ""
+    speak_text: str = ""
+    priority: Priority = "low"
+    ui_action: UiAction = "none"
+    ticket: Ticket | None = None
+    data: dict | None = Field(
+        default=None, description="İlgili pattern'ın ham çıktısı (UI detay isterse)."
+    )
