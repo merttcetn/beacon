@@ -1,6 +1,6 @@
-// MOCK: Demo için sabit buddy_frame yanıtları. Backend gerçek bir oturumda
-// üretmişti; sunum sırasında VLM gecikmesinden bağımsız, deterministic bir
-// akış istediğimiz için cache'liyoruz. Sunum sonrası temizlenecek.
+// MOCK: Demo için sabit /v1/sport yanıtları (önceki buddy_frame cache override edildi).
+// Spor aleti videosundan 3 frame'in Pattern C çıktısı. Sunum sırasında VLM gecikmesinden
+// bağımsız, deterministik bir akış için cache'liyoruz. Sunum sonrası temizlenecek.
 // On/off kontrolü için useDebugStore.vlmBypass kullanılır.
 
 // Her TTS bittikten sonra sıradaki olayı tetiklemeden önceki sessizlik.
@@ -20,27 +20,7 @@ export interface BuddyCacheEvent {
 export const BUDDY_FRAME_CACHE: BuddyCacheEvent[] = [
   {
     speak_text:
-      'Tam önündeki kumaş kaplı bir eşyaya çok yaklaştın, ilerisi tamamen kapalı.',
-    priority: 'critical',
-    data: {
-      immediate_warnings: ['Tam önünde kumaş kaplı bir engele çok yakınsın.'],
-      upcoming_known_issues: [],
-    },
-  },
-  {
-    speak_text:
-      'Önünde sağ taraftaki masada çalışan biri var ve oturduğu sandalye hafifçe yoluna taşıyor. Ona çarpmamak için sol tarafındaki geniş boşluğu kullanarak yanından ilerleyebilirsin.',
-    priority: 'high',
-    data: {
-      immediate_warnings: [
-        'Önünde sağ taraftaki masada oturan bir kişi ve tekerlekli sandalyesi bulunuyor.',
-      ],
-      upcoming_known_issues: [],
-    },
-  },
-  {
-    speak_text:
-      'Sol ön tarafında büyük bir çalışma masası ve tekerlekli sandalyeler bulunuyor. İlerlemek için sağındaki daha açık alanı tercih edebilirsin.',
+      'Karşımızda, eliptik bisiklet benzeri, kolları ve bacakları aynı anda çalıştıran bir yürüyüş aleti bulunuyor. Görünüşe göre güvenli bir alet, ancak binerken ve inerken dengenize dikkat etmelisiniz. Ayaklarınızı turuncu renkli, yatay konumdaki platformlara yerleştirin ve yukarı doğru uzanan hareketli kolları ellerinizle kavrayın. Ardından, bir bacağınızı ileri iterken aynı taraftaki kolu kendinize doğru çekerek ve diğer taraf için de tersini yaparak yürüyüş hareketine başlayabilirsiniz. Bu alet özellikle bacak, kalça ve kol kaslarınızı çalıştırmak için harikadır.',
     priority: 'low',
     data: {
       immediate_warnings: [],
@@ -49,7 +29,7 @@ export const BUDDY_FRAME_CACHE: BuddyCacheEvent[] = [
   },
   {
     speak_text:
-      'Önündeki geçiş alanı düz ve oldukça geniş. Sol tarafında ahşap basamaklı bir platform, sağında ise çalışma sandalyeleri bulunuyor; tam karşıya doğru rahatça ilerleyebilirsin.',
+      'Tam önünde açık hava parklarında sıkça bulunan bir uzay yürüyüşü aleti var. Güvenliğin için alete adım atmadan önce mutlaka üst kısımdaki tutamakları iki elinle sıkıca kavramalısın, çünkü alttaki pedallar serbestçe sallanıyor ve dengeni bozabilir. Tutamakları sıkıca tuttuktan sonra ayaklarını sırayla aşağıdaki turuncu pedallara yerleştir. Sonrasında sırtını dik tutarak, sanki havada uzun adımlarla yürüyormuş gibi bacaklarını öne ve arkaya doğru ritmik olarak sallamaya başlayabilirsin. Bu egzersiz hem bacak ve kalça kaslarını çalıştırır hem de güzel bir kardiyo yapmanı sağlar.',
     priority: 'low',
     data: {
       immediate_warnings: [],
@@ -58,94 +38,10 @@ export const BUDDY_FRAME_CACHE: BuddyCacheEvent[] = [
   },
   {
     speak_text:
-      'Yönünü değiştirdin, şu an önündeki geniş koridor açık ve düz. Solunda ahşap bir masa, sağında ise çalışma masaları yer alıyor; ortadan rahatça ilerleyebilirsin.',
+      'Önünüzde bir dış mekan mekik sehpası bulunuyor. Zemin sert beton, bu yüzden alete yaklaşırken dikkatli olmanızı tavsiye ederim. Bu alet, karın ve merkez bölge kaslarınızı çalıştırmak için tasarlanmıştır. Kullanmak için eğimli kısma sırtüstü yatın ve ayaklarınızı alt kısımdaki barlara sabitleyin. Karın kaslarınızı kullanarak gövdenizi yavaşça kaldırıp indirin. Hareket sırasında boynunuzu zorlamamaya ve dengenizi korumaya özen gösterin.',
     priority: 'low',
     data: {
       immediate_warnings: [],
-      upcoming_known_issues: [],
-    },
-  },
-  {
-    speak_text:
-      'Sağ tarafındaki duvar boyunca büyük turuncu yapılar ve yola hafifçe taşan ince ayaklı bir sandalye bulunuyor. Önündeki zemin açık, solundaki uzun çalışma masalarının yanından düz devam edebilirsin.',
-    priority: 'medium',
-    data: {
-      immediate_warnings: [
-        'Sağ tarafında, yürüme alanına hafifçe taşan ince ayaklı bir sandalye bulunuyor.',
-      ],
-      upcoming_known_issues: [],
-    },
-  },
-  {
-    speak_text:
-      'Dikkat, tam önünde adım atma mesafesinde alçak bir sehpa var. İlerisi de ahşap bir bariyerle kapalı, bu yönde geçiş alanı bulunmuyor.',
-    priority: 'critical',
-    data: {
-      immediate_warnings: [
-        'Tam önünde alçak, dikdörtgen bir sehpa var.',
-        'İlerisi ahşap bir bariyerle kapalı.',
-      ],
-      upcoming_known_issues: [],
-    },
-  },
-  {
-    speak_text: 'Ahşap tezgaha çok yaklaştın, düz ilerisi tamamen kapalı.',
-    priority: 'high',
-    data: {
-      immediate_warnings: ['Yolu tamamen kapatan ahşap tezgaha çok yakınsın.'],
-      upcoming_known_issues: [],
-    },
-  },
-  {
-    speak_text:
-      'Önündeki alan düz ve açık, sol taraftan rahatça ilerleyebilirsin. Sağında uzun bir masa ve çalışma sandalyeleri bulunuyor.',
-    priority: 'low',
-    data: {
-      immediate_warnings: [],
-      upcoming_known_issues: [],
-    },
-  },
-  {
-    speak_text:
-      'Hemen solunda bir kolonun yanından geçiyorsun, önündeki yol düz ve açık. Biraz ileride sağ tarafında ise ahşap basamaklı bir alan bulunuyor.',
-    priority: 'medium',
-    data: {
-      immediate_warnings: ['Hemen solunda bir kolon var.'],
-      upcoming_known_issues: [],
-    },
-  },
-  {
-    speak_text:
-      'Dikkat, tam önünde ahşap bir kapı veya duvar bulunuyor, düz ilerisi kapalı. Sadece sağ tarafında yuvarlak sehpaların olduğu dar bir geçiş görünüyor.',
-    priority: 'high',
-    data: {
-      immediate_warnings: ['Tam önünde yolunu kapatan ahşap bir yüzey var.'],
-      upcoming_known_issues: [],
-    },
-  },
-  {
-    speak_text:
-      'Hemen solunda iki alçak sehpa, sağında ise bir masa ayağı var. Bu engellerin arasından düz devam edebilirsin. Yaklaşık üç metre ileride sol tarafta geniş beton bir kolon bulunuyor.',
-    priority: 'high',
-    data: {
-      immediate_warnings: [
-        'Hemen solunda yola taşan iki adet alçak sehpa var.',
-        'Sağ tarafında, adım hizasında bir çalışma masasının ayağı bulunuyor.',
-      ],
-      upcoming_known_issues: [
-        'Yaklaşık 3 metre ileride sol tarafta geniş beton bir kolon var.',
-        'İleride sağ tarafta yükseltilmiş ahşap bir platform bulunuyor.',
-      ],
-    },
-  },
-  {
-    speak_text:
-      'Önündeki koridor açık, sol tarafına doğru ilerleyebilirsin. Hemen sağında büyük, mavi bir koltuk bulunuyor.',
-    priority: 'low',
-    data: {
-      immediate_warnings: [
-        'Sağ tarafında, yaklaşık iki adım önde, zemine yakın bir koltuk arkalığı var.',
-      ],
       upcoming_known_issues: [],
     },
   },
