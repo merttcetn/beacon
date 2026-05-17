@@ -215,6 +215,26 @@ export default function PinDetail() {
               <Text style={styles.progressLabelText}>EŞİK · 3</Text>
             </View>
           </View>
+
+          {/* Inline bottom actions */}
+          <View style={styles.actionsRow}>
+            <Pressable style={({ pressed }) => [
+              styles.actionBtn,
+              styles.actionSecondary,
+              pressed && { backgroundColor: colors.bg.secondary },
+            ]}>
+              <Ionicons name="close" size={16} color={colors.text.primary} />
+              <Text style={styles.actionSecondaryText}>Artık yok</Text>
+            </Pressable>
+            <Pressable style={({ pressed }) => [
+              styles.actionBtn,
+              styles.actionPrimary,
+              pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
+            ]}>
+              <Ionicons name="checkmark" size={18} color="#fff" />
+              <Text style={styles.actionPrimaryText}>Ben de gördüm</Text>
+            </Pressable>
+          </View>
         </View>
       </ScrollView>
 
@@ -238,34 +258,6 @@ export default function PinDetail() {
           </Pressable>
         </View>
       </SafeAreaView>
-
-      {/* Sticky bottom actions */}
-      <SafeAreaView edges={['bottom']} style={styles.actionsSafe}>
-        <View style={styles.actionsRow}>
-          <Pressable style={({ pressed }) => [
-            styles.actionBtn,
-            styles.actionPrimary,
-            pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
-          ]}>
-            <Ionicons name="checkmark" size={18} color="#fff" />
-            <Text style={styles.actionPrimaryText}>Ben de gördüm</Text>
-          </Pressable>
-          <Pressable style={({ pressed }) => [
-            styles.actionBtn,
-            styles.actionSecondary,
-            pressed && { backgroundColor: colors.bg.secondary },
-          ]}>
-            <Ionicons name="close" size={16} color={colors.text.primary} />
-            <Text style={styles.actionSecondaryText}>Artık yok</Text>
-          </Pressable>
-          <Pressable style={({ pressed }) => [
-            styles.actionUnknown,
-            pressed && { backgroundColor: colors.bg.secondary },
-          ]}>
-            <Text style={styles.actionUnknownText}>?</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
     </View>
   );
 }
@@ -276,7 +268,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg.primary },
 
   scroll: {
-    paddingBottom: 120,
+    paddingBottom: 32,
   },
 
   hero: {
@@ -557,20 +549,10 @@ const styles = StyleSheet.create({
     letterSpacing: 1.1,
   },
 
-  actionsSafe: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: colors.bg.elevated,
-    borderTopWidth: 1,
-    borderTopColor: colors.border.divider,
-  },
   actionsRow: {
     flexDirection: 'row',
     gap: 8,
-    padding: 16,
-    paddingTop: 14,
+    marginTop: 18,
   },
   actionBtn: {
     height: 54,
@@ -604,20 +586,5 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bodySemiBold,
     fontSize: 13.5,
     color: colors.text.primary,
-  },
-  actionUnknown: {
-    width: 54,
-    height: 54,
-    borderRadius: 14,
-    backgroundColor: colors.bg.elevated,
-    borderWidth: 1.5,
-    borderColor: colors.border.default,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionUnknownText: {
-    fontFamily: fontFamily.displayExtra,
-    fontSize: 22,
-    color: colors.text.tertiary,
   },
 });

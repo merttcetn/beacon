@@ -199,12 +199,6 @@ function FeedCard({
       accessibilityRole="button"
       accessibilityLabel={`${ISSUE_LABEL[ticket.issue_type]} · ${formatDistance(distanceKm)}`}
     >
-      <View style={styles.feedStub}>
-        <View style={[styles.feedStubBar, { backgroundColor: color }]} />
-        <View style={styles.feedNotchTop} />
-        <View style={styles.feedNotchBottom} />
-      </View>
-
       <View style={styles.feedBody}>
         <View style={styles.feedRowTop}>
           <View style={styles.feedStatusGroup}>
@@ -768,7 +762,7 @@ const styles = StyleSheet.create({
   // Feed
   feedScroll: { flex: 1, backgroundColor: colors.bg.primary },
   feedContent: {
-    paddingTop: 88,
+    paddingTop: 116,
     paddingHorizontal: 16,
     paddingBottom: 140,
     gap: 12,
@@ -831,7 +825,6 @@ const styles = StyleSheet.create({
   },
 
   feedCard: {
-    flexDirection: 'row',
     backgroundColor: colors.bg.elevated,
     borderRadius: 16,
     borderWidth: 1,
@@ -844,45 +837,7 @@ const styles = StyleSheet.create({
   },
   feedCardPressed: { opacity: 0.94, transform: [{ scale: 0.997 }] },
 
-  feedStub: {
-    width: 16,
-    alignSelf: 'stretch',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  feedStubBar: {
-    width: 4,
-    alignSelf: 'stretch',
-    marginVertical: 18,
-    borderRadius: 2,
-    opacity: 0.9,
-  },
-  feedNotchTop: {
-    position: 'absolute',
-    top: -8,
-    width: 16,
-    height: 16,
-    borderRadius: 99,
-    backgroundColor: colors.bg.primary,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: colors.border.divider,
-  },
-  feedNotchBottom: {
-    position: 'absolute',
-    bottom: -8,
-    width: 16,
-    height: 16,
-    borderRadius: 99,
-    backgroundColor: colors.bg.primary,
-    borderRightWidth: 1,
-    borderTopWidth: 1,
-    borderColor: colors.border.divider,
-  },
-
   feedBody: {
-    flex: 1,
     paddingVertical: 14,
     paddingHorizontal: 14,
   },
