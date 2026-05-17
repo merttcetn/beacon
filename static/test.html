@@ -45,6 +45,29 @@
 <p class="muted">Her endpoint'i gerçek fotoğraf/ses ile test et. Çıktılar server-side TTS ile seslendirilir.</p>
 
 <section>
+  <h2>🎛️ Orchestrator — <code>/v1/assist</code></h2>
+  <label>Sesli ifade — yaz ya da mikrofonla kaydet</label>
+  <textarea id="askText" rows="2">Bu aleti anlat</textarea>
+  <div class="row">
+    <div><label>screen_context</label>
+      <select id="askCtx">
+        <option>idle</option><option>buddy_mode</option><option>sport_mode</option>
+      </select>
+    </div>
+    <div><label>Frame (opsiyonel)</label><input type="file" id="askFrame" accept="image/*" /></div>
+  </div>
+  <label>nearby_tickets (JSON dizi — UI'nin gönderdiği çevre ticket'ları simülasyonu)</label>
+  <textarea id="askNearby" rows="3">[{"issue_type":"pothole","severity":"high","description_tr":"Derin çukur var.","distance_m":18}]</textarea>
+  <div class="actions">
+    <button onclick="assist()">Gönder</button>
+    <button class="sec" id="assistRec" onclick="toggleAssistRecord()">🎙 Kaydet</button>
+    <button class="sec" id="assistListen" style="display:none" onclick="playTTS(lastSpeak.assist)">🔊 Dinle</button>
+  </div>
+  <div id="assistRecStatus" class="muted" style="margin-top:.4rem"></div>
+  <div class="out" id="assistOut"></div>
+</section>
+
+<section>
   <h2>Buddy Mode — <code>/v1/buddy</code></h2>
   <label>Kare — kaldırım / sokak fotoğrafı</label>
   <input type="file" id="buddyFrame" accept="image/*" />
@@ -363,6 +386,78 @@ function sport() {
   const fd = new FormData();
   fd.append("photo", f);
   call("/v1/sport", fd, "sport", "speak_text");
+}
+
+// --- Orchestrator /v1/assist ---
+
+let assistRecorder = null;
+let assistChunks = [];
+let assistBlob = null;
+
+async function toggleAssistRecord() {
+  const btn = document.getElementById("assistRec");
+  const status = document.getElementById("assistRecStatus");
+  if (assistRecorder && assistRecorder.state === "recording") {
+    assistRecorder.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    assistChunks = [];
+    assistRecorder = new MediaRecorder(stream);
+    assistRecorder.ondataavailable = (e) => { if (e.data.size) assistChunks.push(e.data); };
+    assistRecorder.onstop = () => {
+      assistBlob = new Blob(assistChunks, { type: assistRecorder.mimeType });
+      stream.getTracks().forEach((tr) => tr.stop());
+      btn.textContent = "🎙 Kaydet";
+      btn.className = "sec";
+      status.textContent = "Ses hazır (" + Math.round(assistBlob.size / 1024) +
+        " KB) — 'Gönder'e bas.";
+    };
+    assistRecorder.start();
+    btn.textContent = "⏹ Durdur";
+    btn.className = "rec";
+    status.textContent = "🔴 Kaydediliyor...";
+  } catch (e) {
+    status.textContent = "Mikrofon erişilemedi: " + e;
+  }
+}
+
+async function assist() {
+  const out = document.getElementById("assistOut");
+  out.textContent = "İşleniyor... (orchestrator)";
+  const fd = new FormData();
+  fd.append("event", "voice");
+  fd.append("screen_context", document.getElementById("askCtx").value);
+
+  if (assistBlob) {
+    fd.append("audio", assistBlob, "kayit.webm");
+    assistBlob = null;
+    document.getElementById("assistRecStatus").textContent = "";
+  } else {
+    const text = document.getElementById("askText").value.trim();
+    if (!text) { alert("Sesli ifade yaz ya da kaydet."); out.textContent = ""; return; }
+    fd.append("transcript", text);
+  }
+
+  const frameFile = document.getElementById("askFrame").files[0];
+  if (frameFile) fd.append("frame", frameFile);
+  const nearby = document.getElementById("askNearby").value.trim();
+  if (nearby) fd.append("nearby_tickets", nearby);
+
+  const started = performance.now();
+  try {
+    const r = await fetch("/v1/assist", { method: "POST", body: fd });
+    const data = await r.json();
+    out.textContent = JSON.stringify(data, null, 2) +
+      "\n\n— " + r.status + ", " + Math.round(performance.now() - started) + " ms";
+    lastSpeak.assist = data.speak_text || "";
+    document.getElementById("assistListen").style.display =
+      lastSpeak.assist ? "inline-block" : "none";
+    if (lastSpeak.assist) speak(lastSpeak.assist);
+  } catch (e) {
+    out.textContent = "HATA: " + e;
+  }
 }
 </script>
 </body>
