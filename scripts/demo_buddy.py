@@ -79,14 +79,14 @@ def main() -> int:
         for index, frame in enumerate(frames, start=1):
             with frame.open("rb") as handle:
                 resp = client.post(
-                    "/buddy/analyze",
+                    "/v1/buddy",
                     files={"frame": (frame.name, handle, "image/jpeg")},
                 )
             data = resp.json()
             speak = data.get("speak_text", "").strip()
             print(f"[kare {index}] priority={data.get('priority')}  →  {speak or '(sessiz)'}")
             if speak:
-                tts_resp = client.post("/tts", data={"text": speak})
+                tts_resp = client.post("/v1/speech/synthesize", data={"text": speak})
                 if tts_resp.status_code == 200:
                     audio_parts.append(tts_resp.content)
 

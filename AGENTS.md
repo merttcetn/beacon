@@ -79,18 +79,28 @@ Dört patern var. Prompt şemalarının **tam tanımı `product-spec.md §6`'da*
 
 **TTS playback / kuyruk / interrupt app tarafındadır** (spec §4.2 concurrency tablosu). `ai` servisi `speak_text` + `priority` (+ ses) üretir; kuyruğu ve interrupt'ı app `priority`'ye göre yönetir. `priority: critical` app tarafında ezilemez.
 
-## 5. Entegrasyon Kontratı (TASLAK — frontend ekibiyle netleştirilecek)
+## 5. Entegrasyon Kontratı
+
+Tüm görsel/ses taşıyan endpoint'ler `multipart/form-data`. VLM endpoint'leri JSON döner;
+`/v1/speech/synthesize` ses döner. Versiyonlu prefix: `/v1/`. Mod başına **tek** endpoint
+(mod adıyla); ses yardımcıları `/v1/speech/` altında; `/health` ve dev araçları prefix'siz.
 
 | Endpoint | Patern | Girdi | Çıktı |
 |---|---|---|---|
-| `POST /buddy/analyze` | A | frame, gps, known_issues[] | VLM JSON (+ opsiyonel ses) |
-| `POST /feedback/categorize` | B | photos (1-3) | VLM JSON |
-| `POST /sport/describe` | C | photo | VLM JSON + ses |
-| `POST /voice/ask` | D | ses **veya** transcript, screen_context, frame?, gps | VLM JSON + ses |
-| `POST /tts` | — | text, ses opsiyonları | ses |
+| `POST /v1/buddy` | A | `frame`, `lat?`, `lon?`, `recent_guidance?` | `BuddyAnalysis` JSON |
+| `POST /v1/voice` | D | `transcript` **veya** `audio`, `screen_context`, `frame?`, `lat?`, `lon?` | `VoiceAnswer` JSON |
+| `POST /v1/feedback` | B | `photos` (1-3) | `FeedbackResult` JSON |
+| `POST /v1/sport` | C | `photo` | `SportDescription` JSON |
+| `POST /v1/speech/transcribe` | — | `audio` | `{ transcript, ok }` |
+| `POST /v1/speech/synthesize` | — | `text` | ses (`audio/*`) |
 | `GET /health` | — | — | servis durumu |
+| `POST /dev/buddy-video` | A | `video`, `lat?`, `lon?` | batch zaman çizelgesi — **yalnız dev/test**, OpenAPI'de gizli |
 
-Bu tablo **taslaktır** — kesin path/payload frontend ekibiyle anlaşılınca bu doküman güncellenir.
+**Bağlam (`recent_guidance`) — Buddy realtime:** Servis stateless. Realtime akışta app, son
+1-3 `speak_text`'i (en yenisi sonda, satırla ayrılmış) `recent_guidance` form alanında geri
+yollar; model aynı uyarıyı tekrarlamaz, yalnızca yeni tehlike / belirgin değişim / yeni
+faydalı bilgi olduğunda konuşur. Server-side session memory **yok** (bilinçli karar — app
+orchestrate eder, servis saf fonksiyon kalır).
 
 ## 6. Adapter Pattern — VLM / STT / TTS
 
@@ -183,3 +193,4 @@ Claude bir plan veya kod değişikliği ürettiğinde Codex'e review için gönd
 ## 12. Versiyon
 
 - **v1 — 16.05.2026** — İlk sürüm. `ai` repo'su Python + FastAPI AI pipeline servisi olarak konumlandı. Scope, mimari, 4 VLM paterni, adapter pattern, konvansiyonlar ve "Codex'in Görevi — Claude Plan Review" bölümü tanımlandı. `CLAUDE.md` bu dosyayı import eder.
+- **v1.1 — 17.05.2026** — Endpoint'ler `/v1/<mod>` şemasına geçti (mod başına tek endpoint, ses yardımcıları `/v1/speech/` altında, batch video `/dev/buddy-video` dev-only). Buddy realtime'a stateless **`recent_guidance`** bağlamı eklendi — app son `speak_text`'leri geri yollar, model tekrarı önler. §5 kontrat tablosu güncellendi.

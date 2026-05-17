@@ -45,7 +45,7 @@
 <p class="muted">Her endpoint'i gerçek fotoğraf/ses ile test et. Çıktılar server-side TTS ile seslendirilir.</p>
 
 <section>
-  <h2>Buddy Mode — <code>/buddy/analyze</code></h2>
+  <h2>Buddy Mode — <code>/v1/buddy</code></h2>
   <label>Kare — kaldırım / sokak fotoğrafı</label>
   <input type="file" id="buddyFrame" accept="image/*" />
   <div class="row">
@@ -68,9 +68,10 @@
     <div><label>Kare aralığı (sn)</label><input id="videoInterval" type="number" value="5" min="1" size="4" /></div>
     <div><label><input type="checkbox" id="videoTTS" checked /> Sesli oku</label></div>
   </div>
-  <p class="muted">Video oynatılır; her N saniyede o anki kare yakalanır → <code>/buddy/analyze</code> → sesli okunur.
+  <p class="muted">Video oynatılır; her N saniyede o anki kare yakalanır → <code>/v1/buddy</code> → sesli okunur.
     Her kare için tam süreç görünür: <b>VLM süresi + TTS süresi + toplam latency</b>. Saf kare analizi
-    (seed yok). En yeni kare en üstte.</p>
+    (seed yok). Son birkaç <code>speak_text</code> bir sonraki kareye <code>recent_guidance</code>
+    olarak geçer — model tekrarı önler. En yeni kare en üstte.</p>
   <div class="actions"><button onclick="startVideoSim()">Başlat</button></div>
   <video id="videoPlayer" controls playsinline style="display:none"></video>
   <div id="videoStatus" class="muted" style="margin-top:.5rem"></div>
@@ -78,7 +79,7 @@
 </section>
 
 <section>
-  <h2>Voice Q&amp;A — <code>/voice/ask</code> + <code>/stt</code></h2>
+  <h2>Voice Q&amp;A — <code>/v1/voice</code> + <code>/v1/speech/transcribe</code></h2>
   <label>Soru — yaz ya da mikrofonla kaydet (kayıt varsa fal.ai Scribe ile transkript edilir)</label>
   <textarea id="voiceQ" rows="2">Önümde ne var?</textarea>
   <div class="row">
@@ -99,7 +100,7 @@
 </section>
 
 <section>
-  <h2>Feedback — <code>/feedback/categorize</code></h2>
+  <h2>Feedback — <code>/v1/feedback</code></h2>
   <label>1-3 problem fotoğrafı (çukur, bozuk rampa, engel...)</label>
   <input type="file" id="fbPhotos" accept="image/*" multiple />
   <div class="actions"><button onclick="feedback()">Kategorize Et</button></div>
@@ -107,7 +108,7 @@
 </section>
 
 <section>
-  <h2>Spor — <code>/sport/describe</code></h2>
+  <h2>Spor — <code>/v1/sport</code></h2>
   <label>Spor aleti fotoğrafı</label>
   <input type="file" id="sportPhoto" accept="image/*" />
   <div class="actions">
@@ -127,7 +128,7 @@ async function speak(text) {
   const started = performance.now();
   const fd = new FormData();
   fd.append("text", text);
-  const r = await fetch("/tts", { method: "POST", body: fd });
+  const r = await fetch("/v1/speech/synthesize", { method: "POST", body: fd });
   if (!r.ok) return null;
   if (currentAudio) currentAudio.pause();
   currentAudio = new Audio(URL.createObjectURL(await r.blob()));
@@ -172,12 +173,16 @@ function buddy() {
   const lon = document.getElementById("buddyLon").value.trim();
   if (lat) fd.append("lat", lat);
   if (lon) fd.append("lon", lon);
-  call("/buddy/analyze", fd, "buddy", "speak_text");
+  call("/v1/buddy", fd, "buddy", "speak_text");
 }
 
 // --- Buddy Video: gerçek zamanlı simülasyon ---
 
+// Realtime akışta son speak_text'ler — bir sonraki kareye recent_guidance olarak geçer.
+let realtimeGuidance = [];
+
 function startVideoSim() {
+  realtimeGuidance = [];
   const f = document.getElementById("videoFile").files[0];
   if (!f) { alert("Bir video seç."); return; }
   const player = document.getElementById("videoPlayer");
@@ -227,11 +232,16 @@ async function captureAndAnalyze(player, t) {
 
   const fd = new FormData();
   fd.append("frame", blob, "frame.jpg");
+  if (realtimeGuidance.length) fd.append("recent_guidance", realtimeGuidance.join("\n"));
   try {
     const t0 = performance.now();
-    const r = await fetch("/buddy/analyze", { method: "POST", body: fd });
+    const r = await fetch("/v1/buddy", { method: "POST", body: fd });
     const data = await r.json();
     const vlmMs = Math.round(performance.now() - t0);
+    if (data.speak_text && data.speak_text.trim()) {
+      realtimeGuidance.push(data.speak_text.trim());
+      if (realtimeGuidance.length > 3) realtimeGuidance.shift();
+    }
     card.querySelector(".res").textContent = data.speak_text || "(sessiz)";
 
     let line = (data.priority || "").toUpperCase() + " · VLM " + vlmMs + "ms";
@@ -302,7 +312,7 @@ async function voice() {
     document.getElementById("recStatus").textContent = "";
     const t0 = performance.now();
     try {
-      const sr = await fetch("/stt", { method: "POST", body: sttFd });
+      const sr = await fetch("/v1/speech/transcribe", { method: "POST", body: sttFd });
       const sd = await sr.json();
       transcript = (sd.transcript || "").trim();
     } catch (e) {
@@ -326,10 +336,10 @@ async function voice() {
   if (frameFile) fd.append("frame", frameFile);
   const t1 = performance.now();
   try {
-    const r = await fetch("/voice/ask", { method: "POST", body: fd });
+    const r = await fetch("/v1/voice", { method: "POST", body: fd });
     const data = await r.json();
     out.textContent += JSON.stringify(data, null, 2) +
-      "\n\n— /voice/ask " + Math.round(performance.now() - t1) + " ms";
+      "\n\n— /v1/voice " + Math.round(performance.now() - t1) + " ms";
     lastSpeak.voice = data.answer_speak_text || "";
     document.getElementById("voiceListen").style.display =
       lastSpeak.voice ? "inline-block" : "none";
@@ -344,7 +354,7 @@ function feedback() {
   if (!files.length) { alert("En az 1 fotoğraf seç."); return; }
   const fd = new FormData();
   for (const f of files) fd.append("photos", f);
-  call("/feedback/categorize", fd, "fb", null);
+  call("/v1/feedback", fd, "fb", null);
 }
 
 function sport() {
@@ -352,7 +362,7 @@ function sport() {
   if (!f) { alert("Bir görsel seç."); return; }
   const fd = new FormData();
   fd.append("photo", f);
-  call("/sport/describe", fd, "sport", "speak_text");
+  call("/v1/sport", fd, "sport", "speak_text");
 }
 </script>
 </body>

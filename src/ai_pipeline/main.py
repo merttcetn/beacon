@@ -76,10 +76,12 @@ async def analyze_buddy_frame(
     lat: float | None,
     lon: float | None,
     known: list[dict],
+    recent_guidance: str | None = None,
 ) -> BuddyAnalysis:
     """Tek bir kareyi Buddy Mode (Pattern A) ile analiz eder; hata → güvenli fallback.
 
-    Hem `/buddy/analyze` hem `/buddy/analyze-video` bunu kullanır (DRY).
+    Hem `/v1/buddy` hem `/dev/buddy-video` bunu kullanır (DRY). `recent_guidance`
+    verilirse (realtime akışta son speak_text'ler) model tekrarı önlemek için kullanır.
     """
     model = _gemini_model_for("pattern_a")
     if model is None:
@@ -87,7 +89,7 @@ async def analyze_buddy_frame(
     result = await generate_structured(
         model=model,
         system_instruction=BUDDY_SYSTEM,
-        user_prompt=buddy_user_prompt(lat, lon, known),
+        user_prompt=buddy_user_prompt(lat, lon, known, recent_guidance),
         response_schema=BuddyAnalysis,
         images=[(image_bytes, image_mime)],
     )
@@ -115,36 +117,43 @@ async def test_page() -> FileResponse:
     return FileResponse(_TEST_PAGE)
 
 
-@app.post("/buddy/analyze", response_model=BuddyAnalysis)
+@app.post("/v1/buddy", response_model=BuddyAnalysis)
 async def buddy_analyze(
     frame: Annotated[UploadFile, File(description="Kullanıcının önündeki kare")],
     lat: Annotated[float | None, Form()] = None,
     lon: Annotated[float | None, Form()] = None,
+    recent_guidance: Annotated[
+        str | None,
+        Form(description="Realtime akışta son söylenen speak_text'ler — tekrar önleme"),
+    ] = None,
 ) -> BuddyAnalysis:
-    """Pattern A — Buddy Mode: frame (+ konum) → Gemini → Türkçe rehberlik JSON'u.
+    """Pattern A — Buddy Mode: frame (+ konum + bağlam) → Gemini → Türkçe rehberlik JSON'u.
 
     Konum verilirse yakın bilinen problemler (seed JSON + Haversine) prompt'a eklenir.
-    VLM başarısız olursa güvenli fallback (boş speak_text, priority=low) döner (spec §4.1).
+    Realtime akışta app, son birkaç `speak_text`'i `recent_guidance` olarak geri yollar;
+    model aynı uyarıyı tekrarlamaz (server stateless kalır). VLM başarısız olursa güvenli
+    fallback (boş speak_text, priority=low) döner (spec §4.1).
     """
     image_bytes = await frame.read()
     known: list[dict] = []
     if lat is not None and lon is not None:
         known = nearby_issues(lat, lon, settings.known_issues_radius_m)
     return await analyze_buddy_frame(
-        image_bytes, frame.content_type or "image/jpeg", lat, lon, known
+        image_bytes, frame.content_type or "image/jpeg", lat, lon, known, recent_guidance
     )
 
 
-@app.post("/buddy/analyze-video")
+@app.post("/dev/buddy-video", include_in_schema=False)
 async def buddy_analyze_video(
     video: Annotated[UploadFile, File(description="İşlenecek yürüyüş videosu")],
     lat: Annotated[float | None, Form()] = None,
     lon: Annotated[float | None, Form()] = None,
 ) -> dict:
-    """Buddy Mode — batch video: video → N kare → her kare Pattern A → zaman çizelgesi.
+    """Dev/test aracı — batch video: video → N kare → her kare Pattern A → zaman çizelgesi.
 
-    Kareler `gemini_frame_interval_seconds` aralıkla çıkarılır, `video_concurrency`
-    sınırıyla paralel işlenir. `processing_ms` ölçülen toplam latency'dir.
+    Production akışı değil: gerçek kullanımda framing app tarafında yapılır ve her kare
+    `/v1/buddy`'ye gönderilir. Kareler paralel işlendiğinden bağlam (recent_guidance)
+    aktarılmaz; bu endpoint yalnızca toplu kalite/latency testi içindir.
     """
     started = time.perf_counter()
     known: list[dict] = []
@@ -184,7 +193,7 @@ async def buddy_analyze_video(
     }
 
 
-@app.post("/voice/ask", response_model=VoiceAnswer)
+@app.post("/v1/voice", response_model=VoiceAnswer)
 async def voice_ask(
     transcript: Annotated[str | None, Form(description="STT çıktısı (yoksa audio gönder)")] = None,
     audio: Annotated[
@@ -228,7 +237,7 @@ async def voice_ask(
     return result
 
 
-@app.post("/stt")
+@app.post("/v1/speech/transcribe")
 async def stt(
     audio: Annotated[UploadFile, File(description="Transkript edilecek ses dosyası")],
 ) -> dict:
@@ -240,7 +249,7 @@ async def stt(
     return {"transcript": transcript, "ok": True}
 
 
-@app.post("/feedback/categorize", response_model=FeedbackResult)
+@app.post("/v1/feedback", response_model=FeedbackResult)
 async def feedback_categorize(
     photos: Annotated[list[UploadFile], File(description="1-3 problem fotoğrafı")],
 ) -> FeedbackResult:
@@ -263,7 +272,7 @@ async def feedback_categorize(
     return result
 
 
-@app.post("/sport/describe", response_model=SportDescription)
+@app.post("/v1/sport", response_model=SportDescription)
 async def sport_describe(
     photo: Annotated[UploadFile, File(description="Spor aleti fotoğrafı")],
 ) -> SportDescription:
@@ -286,7 +295,7 @@ async def sport_describe(
     return result
 
 
-@app.post("/tts")
+@app.post("/v1/speech/synthesize")
 async def tts(
     text: Annotated[str, Form(description="Seslendirilecek Türkçe metin")],
 ) -> Response:

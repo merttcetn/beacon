@@ -33,13 +33,19 @@ tehlike yoksa kullanıcının ne yapabileceğini / nasıl ilerleyebileceğini s�
 sahne tamamen anlamsız/boşsa boş string döndür.
 - priority: low (bilgi) / medium (dikkat) / high (yakın tehlike) / critical (anlık \
 fiziksel risk — çarpışma, düşme, araç). critical'i abartma.
-- Mesafe ve yön referansları kareye göre ("önünde", "sağında", "yaklaşık 3 metre ileride")."""
+- Mesafe ve yön referansları kareye göre ("önünde", "sağında", "yaklaşık 3 metre ileride").
+- TEKRARI ÖNLE: Sana son saniyelerde kullanıcıya söylediğin sözler verilebilir. Aynı \
+uyarıyı/bilgiyi aynı şekilde TEKRARLAMA. Yalnızca (a) yeni bir tehlike, (b) durumda belirgin \
+değişim (tehlike yaklaştı / uzaklaştı / geçti, yol açıldı) ya da (c) kullanıcıya yeni ve \
+faydalı bir bilgi varsa konuş. Hiçbiri yoksa speak_text'i boş string bırak — sessizlik \
+değerlidir."""
 
 
 def buddy_user_prompt(
     lat: float | None,
     lon: float | None,
     known_issues: list[dict] | None = None,
+    recent_guidance: str | None = None,
 ) -> str:
     lines = ["Aşağıdaki kare, kullanıcının şu an gördüğü sahne. Analiz et."]
     if lat is not None and lon is not None:
@@ -57,6 +63,13 @@ def buddy_user_prompt(
         lines.append(
             "Bunlardan yalnızca gidiş yönünde ve yakın olanı kısaca "
             "upcoming_known_issues'a ekleyebilirsin."
+        )
+    if recent_guidance and recent_guidance.strip():
+        lines.append("Son saniyelerde kullanıcıya söylediğin sözler (en yenisi en altta):")
+        lines.append(recent_guidance.strip())
+        lines.append(
+            "Aynısını tekrarlama; yalnızca yeni tehlike, durumda belirgin değişim ya da "
+            "yeni faydalı bilgi varsa konuş — yoksa speak_text'i boş bırak."
         )
     return "\n".join(lines)
 
