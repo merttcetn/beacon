@@ -1,8 +1,8 @@
 import { AppMap, type AppMapMarker } from '@/components/AppMap';
 import { DockBar } from '@/components/DockBar';
+import { Loader } from '@/components/Loader';
 import { DEFAULT_REGION } from '@/constants/region';
-import { SAMPLE_TICKETS } from '@/constants/sampleTickets';
-import { useTicketStore } from '@/stores/ticketStore';
+import { useTickets } from '@/lib/tickets';
 import { colors, fontFamily } from '@/theme';
 import type { AffectedUser, Ticket } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
@@ -176,6 +176,7 @@ interface FeedItem {
 interface FeedListProps {
   items: FeedItem[];
   locationReady: boolean;
+  loading: boolean;
   onItemPress: (id: string) => void;
 }
 
@@ -253,7 +254,7 @@ function FeedCard({
   );
 }
 
-function FeedList({ items, locationReady, onItemPress }: FeedListProps) {
+function FeedList({ items, locationReady, loading, onItemPress }: FeedListProps) {
   return (
     <ScrollView
       style={styles.feedScroll}
@@ -268,13 +269,17 @@ function FeedList({ items, locationReady, onItemPress }: FeedListProps) {
         </View>
         <Text style={styles.feedHeaderTitle}>Yakındaki ticket&apos;lar</Text>
         <Text style={styles.feedHeaderSubtitle}>
-          {locationReady
-            ? `${items.length} kayıt · mesafeye göre sıralı`
-            : `Konum kapalı · varsayılan merkez · ${items.length} kayıt`}
+          {loading
+            ? 'Saha verisi yükleniyor…'
+            : locationReady
+              ? `${items.length} kayıt · mesafeye göre sıralı`
+              : `Konum kapalı · varsayılan merkez · ${items.length} kayıt`}
         </Text>
       </View>
 
-      {items.length === 0 ? (
+      {loading && items.length === 0 ? (
+        <Loader caption="Ticket'lar yükleniyor" />
+      ) : items.length === 0 ? (
         <View style={styles.feedEmpty}>
           <Ionicons name="leaf-outline" size={28} color={colors.text.tertiary} />
           <Text style={styles.feedEmptyTitle}>Yakında ticket yok</Text>
@@ -303,7 +308,7 @@ export default function VolunteerMap() {
   const [visibleTicket, setVisibleTicket] = useState<Ticket | null>(null);
   const [userCoord, setUserCoord] = useState<Coord | null>(null);
   const router = useRouter();
-  const userTickets = useTicketStore((s) => s.userTickets);
+  const { data: tickets, isLoading } = useTickets();
   const mapRef = useRef<MapView>(null);
   const fade = useRef(new Animated.Value(0)).current;
   const cardTranslateY = fade.interpolate({ inputRange: [0, 1], outputRange: [-24, 0] });
@@ -327,10 +332,7 @@ export default function VolunteerMap() {
     }).start();
   }, [view, viewAnim]);
 
-  const allTickets = useMemo<Ticket[]>(
-    () => [...userTickets, ...SAMPLE_TICKETS],
-    [userTickets],
-  );
+  const allTickets = useMemo<Ticket[]>(() => tickets ?? [], [tickets]);
 
   const markers = useMemo<AppMapMarker[]>(
     () => allTickets.map(toMarker),
@@ -375,9 +377,7 @@ export default function VolunteerMap() {
 
   useEffect(() => {
     const nextTicket = selectedId
-      ? userTickets.find((x) => x.id === selectedId) ??
-        SAMPLE_TICKETS.find((x) => x.id === selectedId) ??
-        null
+      ? allTickets.find((x) => x.id === selectedId) ?? null
       : null;
 
     if (nextTicket) {
@@ -398,13 +398,11 @@ export default function VolunteerMap() {
         if (finished) setVisibleTicket(null);
       });
     }
-  }, [selectedId, userTickets, fade]);
+  }, [selectedId, allTickets, fade]);
 
   function handleMarkerTap(id: string) {
     setSelectedId(id);
-    const t =
-      userTickets.find((x) => x.id === id) ??
-      SAMPLE_TICKETS.find((x) => x.id === id);
+    const t = allTickets.find((x) => x.id === id);
     if (!t) return;
     mapRef.current?.animateCamera(
       {
@@ -489,6 +487,7 @@ export default function VolunteerMap() {
         <FeedList
           items={feedItems}
           locationReady={userCoord !== null}
+          loading={isLoading}
           onItemPress={handleFeedItemPress}
         />
       </Animated.View>
@@ -575,6 +574,14 @@ export default function VolunteerMap() {
         </Animated.View>
       ) : null}
 
+      {view === 'map' && isLoading && allTickets.length === 0 ? (
+        <SafeAreaView edges={['top']} style={styles.mapLoaderSafe} pointerEvents="none">
+          <View style={styles.mapLoaderPill}>
+            <Loader variant="pill" caption="Saha verisi yükleniyor" />
+          </View>
+        </SafeAreaView>
+      ) : null}
+
       <DockBar onRecenter={view === 'map' ? handleRecenter : undefined} />
     </View>
   );
@@ -591,6 +598,17 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 4,
+  },
+  mapLoaderSafe: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 3,
+  },
+  mapLoaderPill: {
+    marginTop: 64,
   },
   topBar: {
     marginTop: 8,

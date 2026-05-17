@@ -3,9 +3,8 @@ import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { PulseDot } from '@/components/PulseDot';
-import { SAMPLE_TICKETS } from '@/constants/sampleTickets';
-import { useTicketStore } from '@/stores/ticketStore';
+import { Loader } from '@/components/Loader';
+import { useTickets } from '@/lib/tickets';
 import { colors, fontFamily } from '@/theme';
 import type { AffectedUser, Ticket } from '@/types';
 
@@ -62,11 +61,28 @@ function heroPhotoUri(ticket: Ticket): string {
 export default function PinDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const userTickets = useTicketStore((s) => s.userTickets);
-  const ticket =
-    userTickets.find((t) => t.id === id) ??
-    SAMPLE_TICKETS.find((t) => t.id === id) ??
-    SAMPLE_TICKETS[0];
+  const { data: tickets, isLoading } = useTickets();
+  const ticket = (tickets ?? []).find((t) => t.id === id) ?? (tickets ?? [])[0];
+
+  if (!ticket) {
+    return (
+      <View style={styles.root}>
+        <SafeAreaView edges={['top']} style={styles.topSafe} pointerEvents="box-none">
+          <View style={styles.topRow}>
+            <Pressable
+              style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Geri"
+            >
+              <Ionicons name="chevron-back" size={18} color={colors.text.primary} />
+            </Pressable>
+          </View>
+        </SafeAreaView>
+        <Loader caption={isLoading ? 'Ticket yükleniyor' : 'Ticket bulunamadı'} />
+      </View>
+    );
+  }
 
   const color = pinColor(ticket.verified, ticket.verification_count);
   const status = statusLabel(ticket.verified, ticket.verification_count);
@@ -87,20 +103,6 @@ export default function PinDetail() {
             contentFit="cover"
             transition={220}
           />
-
-          {/* Sol-üst: severity dot + issue chip */}
-          <View style={styles.heroIssueChip}>
-            <View style={[styles.heroDot, { backgroundColor: color }]} />
-            <Text style={styles.heroIssueText}>
-              {ISSUE_LABEL[ticket.issue_type].toUpperCase()}
-            </Text>
-          </View>
-
-          {/* Sağ-üst: yüz blur */}
-          <View style={styles.heroBlurChip}>
-            <PulseDot color={colors.status.verified} size={6} duration={1200} />
-            <Text style={styles.heroBlurText}>Yüz blur</Text>
-          </View>
 
           {/* Sol-alt: foto tag */}
           <View style={styles.heroPhotoTag}>
@@ -249,13 +251,6 @@ export default function PinDetail() {
           >
             <Ionicons name="chevron-back" size={18} color={colors.text.primary} />
           </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Paylaş"
-          >
-            <Ionicons name="share-social-outline" size={17} color={colors.text.primary} />
-          </Pressable>
         </View>
       </SafeAreaView>
     </View>
@@ -280,50 +275,6 @@ const styles = StyleSheet.create({
   },
   heroImage: {
     ...StyleSheet.absoluteFillObject,
-  },
-  heroIssueChip: {
-    position: 'absolute',
-    top: 76,
-    left: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 99,
-    backgroundColor: 'rgba(250,247,242,0.94)',
-    borderWidth: 1,
-    borderColor: 'rgba(26,29,36,0.06)',
-  },
-  heroDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 99,
-  },
-  heroIssueText: {
-    fontFamily: fontFamily.monoBold,
-    fontSize: 10.5,
-    color: colors.text.primary,
-    letterSpacing: 1.4,
-  },
-  heroBlurChip: {
-    position: 'absolute',
-    top: 76,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 99,
-    backgroundColor: 'rgba(250,247,242,0.94)',
-    borderWidth: 1,
-    borderColor: 'rgba(26,29,36,0.06)',
-  },
-  heroBlurText: {
-    fontFamily: fontFamily.mono,
-    fontSize: 10.5,
-    color: colors.text.primary,
   },
   heroPhotoTag: {
     position: 'absolute',

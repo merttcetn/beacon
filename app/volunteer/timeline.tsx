@@ -2,10 +2,11 @@ import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { useRouter } from 'expo-router';
 import { X } from 'lucide-react-native';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTicketStore } from '@/stores/ticketStore';
+import { Loader } from '@/components/Loader';
+import { useTickets } from '@/lib/tickets';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily, spacing } from '@/theme';
 import type { Ticket } from '@/types';
@@ -32,7 +33,11 @@ function formatDay(iso: string) {
 
 export default function MyTickets() {
   const router = useRouter();
-  const userTickets = useTicketStore((s) => s.userTickets);
+  const { data: allTickets, isLoading } = useTickets();
+  const userTickets = useMemo(
+    () => (allTickets ?? []).filter((t) => t.created_by === 'demo-volunteer'),
+    [allTickets],
+  );
   const resetUser = useUserStore((s) => s.reset);
   const progress = useRef(new Animated.Value(0)).current;
 
@@ -50,7 +55,11 @@ export default function MyTickets() {
   }
 
   const total = userTickets.length;
-  const kicker = total === 0 ? 'defter' : `${total} kayıt`;
+  const kicker = isLoading
+    ? 'yükleniyor'
+    : total === 0
+      ? 'defter'
+      : `${total} kayıt`;
 
   return (
     <View style={styles.root}>
@@ -89,7 +98,9 @@ export default function MyTickets() {
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
         >
-          {total === 0 ? (
+          {isLoading && total === 0 ? (
+            <Loader caption="Ticket'larım yükleniyor" />
+          ) : total === 0 ? (
             <EmptyState progress={progress} />
           ) : (
             userTickets.map((t, i) => (

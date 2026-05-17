@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { hasAiApi } from '@/lib/aiApi';
 import { categorizeFeedback } from '@/lib/feedbackCategorize';
 import { submitTicketReport } from '@/lib/n8n';
-import { useTicketStore } from '@/stores/ticketStore';
+import { useAddTicket } from '@/lib/tickets';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily, radius, spacing } from '@/theme';
 import type { AffectedUser, IssueType, Severity, Ticket } from '@/types';
@@ -94,7 +94,7 @@ const AFFECTED: AffectedDef[] = [
 export default function NewTicket() {
   const params = useLocalSearchParams<{ photoUri?: string; lat?: string; lon?: string }>();
   const router = useRouter();
-  const addTicket = useTicketStore((s) => s.addTicket);
+  const addTicket = useAddTicket();
   const userRole = useUserStore((s) => s.role);
 
   const lat = params.lat ? Number(params.lat) : 39.8763;
@@ -165,7 +165,7 @@ export default function NewTicket() {
     const now = new Date().toISOString();
     const transcript = description.trim() || currentCat.label;
 
-    // Lokal kayıt (mevcut davranış) — n8n başarısız olsa bile korunur
+    // Supabase kaydı — n8n başarısız olsa bile burada kalır
     const ticket: Ticket = {
       id: nanoid(12),
       title: ticketName.trim() || undefined,
@@ -184,7 +184,11 @@ export default function NewTicket() {
       created_at: now,
       updated_at: now,
     };
-    addTicket(ticket);
+    try {
+      await addTicket.mutateAsync(ticket);
+    } catch (err) {
+      console.warn('[tickets] supabase insert fail', err);
+    }
 
     // n8n webhook'una bildir — fail-soft
     try {
