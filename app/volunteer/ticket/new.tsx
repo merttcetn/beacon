@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nanoid } from 'nanoid/non-secure';
 import { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,9 +14,23 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { submitTicketReport } from '@/lib/n8n';
 import { useTicketStore } from '@/stores/ticketStore';
+import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily, radius, spacing } from '@/theme';
 import type { AffectedUser, IssueType, Severity, Ticket } from '@/types';
+
+type SubmitPhase =
+  | { kind: 'idle' }
+  | { kind: 'sending' }
+  | { kind: 'success'; ticketId: string; sentCount: number }
+  | { kind: 'error' };
+
+const SCORE_FROM_SEVERITY: Record<Severity, number> = {
+  high: 3,
+  medium: 5,
+  low: 7,
+};
 
 interface CategoryDef {
   id: IssueType;
@@ -76,6 +91,7 @@ export default function NewTicket() {
   const params = useLocalSearchParams<{ photoUri?: string; lat?: string; lon?: string }>();
   const router = useRouter();
   const addTicket = useTicketStore((s) => s.addTicket);
+  const userRole = useUserStore((s) => s.role);
 
   const lat = params.lat ? Number(params.lat) : 39.8763;
   const lon = params.lon ? Number(params.lon) : 32.7559;
@@ -89,6 +105,7 @@ export default function NewTicket() {
   );
   const [description, setDescription] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [submitPhase, setSubmitPhase] = useState<SubmitPhase>({ kind: 'idle' });
 
   const currentCat = useMemo(
     () => CATEGORIES.find((c) => c.id === category) ?? CATEGORIES[0],
@@ -106,8 +123,14 @@ export default function NewTicket() {
   }
 
   async function submit() {
+    if (submitPhase.kind === 'sending') return;
+    setSubmitPhase({ kind: 'sending' });
+
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const now = new Date().toISOString();
+    const transcript = description.trim() || currentCat.label;
+
+    // Lokal kayıt (mevcut davranış) — n8n başarısız olsa bile korunur
     const ticket: Ticket = {
       id: nanoid(12),
       created_by: 'demo-volunteer',
@@ -115,7 +138,7 @@ export default function NewTicket() {
       issue_type: category,
       severity,
       affected_users: Array.from(affected),
-      description_tr: description || currentCat.label,
+      description_tr: transcript,
       photo_urls: photoUri ? [photoUri] : [],
       confidence: 0.85,
       source: 'user_volunteer',
@@ -126,7 +149,39 @@ export default function NewTicket() {
       updated_at: now,
     };
     addTicket(ticket);
-    router.replace('/volunteer');
+
+    // n8n webhook'una bildir — fail-soft
+    try {
+      const result = await submitTicketReport({
+        transcript,
+        categorization: {
+          has_damage: true,
+          issues: [
+            {
+              type: category,
+              severity,
+              affected_users: Array.from(affected),
+              description_tr: transcript,
+              confidence: 0.85,
+            },
+          ],
+          overall_accessibility_score: SCORE_FROM_SEVERITY[severity],
+        },
+        location: { lat, lon },
+        timestamp: now,
+        user: { role: userRole ?? 'volunteer' },
+      });
+      setSubmitPhase({
+        kind: 'success',
+        ticketId: result.ticket_id,
+        sentCount: result.sent_count,
+      });
+    } catch (err) {
+      console.warn('[n8n submit failed]', err);
+      setSubmitPhase({ kind: 'error' });
+    }
+
+    setTimeout(() => router.replace('/volunteer'), 1800);
   }
 
   return (
@@ -337,14 +392,54 @@ export default function NewTicket() {
       </ScrollView>
 
       <SafeAreaView edges={['bottom']} style={styles.submitSafe}>
+        {submitPhase.kind === 'error' ? (
+          <View style={[styles.statusBanner, styles.statusBannerError]}>
+            <Ionicons name="warning" size={14} color={colors.status.partial} />
+            <Text style={styles.statusBannerText}>
+              Bildirim iletilemedi. Kayıt yerel olarak alındı.
+            </Text>
+          </View>
+        ) : null}
+        {submitPhase.kind === 'success' ? (
+          <View style={[styles.statusBanner, styles.statusBannerSuccess]}>
+            <Ionicons name="checkmark-circle" size={14} color={colors.status.verified} />
+            <Text style={styles.statusBannerText}>
+              {submitPhase.sentCount} kuruma iletildi · ID {submitPhase.ticketId.slice(-6)}
+            </Text>
+          </View>
+        ) : null}
         <Pressable
           onPress={submit}
+          disabled={submitPhase.kind === 'sending'}
           accessibilityRole="button"
           accessibilityLabel="Ticket'ı gönder"
-          style={({ pressed }) => [styles.submitBtn, pressed && { opacity: 0.92 }]}
+          style={({ pressed }) => [
+            styles.submitBtn,
+            pressed && { opacity: 0.92 },
+            submitPhase.kind === 'sending' && { opacity: 0.85 },
+          ]}
         >
-          <Ionicons name="paper-plane" size={18} color={colors.text.inverse} />
-          <Text style={styles.submitText}>Gönder</Text>
+          {submitPhase.kind === 'sending' ? (
+            <>
+              <ActivityIndicator size="small" color={colors.text.inverse} />
+              <Text style={styles.submitText}>Gönderiliyor…</Text>
+            </>
+          ) : submitPhase.kind === 'success' ? (
+            <>
+              <Ionicons name="checkmark" size={18} color={colors.text.inverse} />
+              <Text style={styles.submitText}>İletildi</Text>
+            </>
+          ) : submitPhase.kind === 'error' ? (
+            <>
+              <Ionicons name="alert-circle" size={18} color={colors.text.inverse} />
+              <Text style={styles.submitText}>Kapatılıyor…</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="paper-plane" size={18} color={colors.text.inverse} />
+              <Text style={styles.submitText}>Gönder</Text>
+            </>
+          )}
         </Pressable>
       </SafeAreaView>
     </View>
@@ -602,5 +697,31 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text.inverse,
     letterSpacing: 0.2,
+  },
+
+  statusBanner: {
+    marginHorizontal: spacing.s4,
+    marginTop: spacing.s3,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+  },
+  statusBannerSuccess: {
+    backgroundColor: colors.status.verified + '14',
+    borderColor: colors.status.verified + '40',
+  },
+  statusBannerError: {
+    backgroundColor: colors.status.partial + '14',
+    borderColor: colors.status.partial + '40',
+  },
+  statusBannerText: {
+    flex: 1,
+    fontFamily: fontFamily.bodyMedium,
+    fontSize: 12.5,
+    color: colors.text.primary,
   },
 });
