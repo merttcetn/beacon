@@ -1,20 +1,31 @@
-import { Audio } from 'expo-av';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
+import { setAudioModeAsync as setExpoAudioModeAsync } from 'expo-audio';
 import { File, Paths } from 'expo-file-system';
 import { AI_API_URL, assertAiApi } from './aiApi';
 
 let currentSound: Audio.Sound | null = null;
 let requestId = 0;
-let audioModeInitialized = false;
 
-async function ensureAudioMode() {
-  if (audioModeInitialized) return;
-  await Audio.setAudioModeAsync({
-    playsInSilentModeIOS: true,
-    allowsRecordingIOS: true,
-    shouldDuckAndroid: true,
-    staysActiveInBackground: false,
+async function configurePlaybackAudioMode() {
+  await Promise.all([
+    setExpoAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+      interruptionMode: 'doNotMix',
+      shouldRouteThroughEarpiece: false,
+    }),
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      playThroughEarpieceAndroid: false,
+      shouldDuckAndroid: true,
+      interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+      interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+    }),
+  ]).catch((error) => {
+    console.warn('[tts] audio mode ayarlanamadı:', error);
   });
-  audioModeInitialized = true;
 }
 
 const audioFileCache = new Map<string, string>();
@@ -91,9 +102,26 @@ function extensionForContentType(contentType: string | null): string {
   return 'mp3';
 }
 
+const KNOWN_AUDIO_EXTENSIONS = ['mp3', 'wav', 'm4a', 'flac'] as const;
+
+function findPersistedAudioFile(hash: string): string | null {
+  for (const ext of KNOWN_AUDIO_EXTENSIONS) {
+    const file = new File(Paths.document, `tts-${hash}.${ext}`);
+    if (file.exists) return file.uri;
+  }
+  return null;
+}
+
 async function fetchAudioFile(text: string): Promise<string> {
   const cached = audioFileCache.get(text);
   if (cached) return cached;
+
+  const hash = textHash(text);
+  const persisted = findPersistedAudioFile(hash);
+  if (persisted) {
+    audioFileCache.set(text, persisted);
+    return persisted;
+  }
 
   assertAiApi();
 
@@ -124,7 +152,7 @@ async function fetchAudioFile(text: string): Promise<string> {
   const bytes = new Uint8Array(buffer);
   const extension = extensionForContentType(contentType);
 
-  const file = new File(Paths.cache, `tts-${textHash(text)}.${extension}`);
+  const file = new File(Paths.document, `tts-${hash}.${extension}`);
   if (file.exists) file.delete();
   file.create();
   file.write(bytes);
@@ -150,8 +178,7 @@ export async function speakTts(text: string) {
   emitTtsState(true);
 
   try {
-    await ensureAudioMode();
-
+    await configurePlaybackAudioMode();
     const audioUri = await fetchAudioFile(cleanText);
     if (activeRequest !== requestId) return;
 

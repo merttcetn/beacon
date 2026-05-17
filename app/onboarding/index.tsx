@@ -21,13 +21,20 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
-import { PulseDot } from '@/components/PulseDot';
 import { Wordmark } from '@/components/Wordmark';
+import { speakTts, stopTts } from '@/lib/tts';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily, spacing } from '@/theme';
 import type { UserRole } from '@/types';
 
+const GREETING =
+  'Hoşgeldin, yürümeye başlamak için ekranın ortasına dokunabilirsin!';
+const GREETING_DISPLAY = 'Hoşgeldin,';
+const GREETING_DELAY_MS = 600;
+
 const BUDDY_DIAMETER = 272;
+const ORBIT_INSET = 14;
+const ORBIT_SIZE = BUDDY_DIAMETER + ORBIT_INSET * 2;
 const RING_BASE = 188;
 const RING_STEP = 64;
 const ICON_COLOR_LIGHT = 'rgba(255,255,255,0.92)';
@@ -54,7 +61,6 @@ function MapPinIcon({ size = 26, stroke = 2.2, color = ICON_COLOR_LIGHT }) {
 
 interface SecondaryRole {
   id: UserRole;
-  n: string;
   meta: string;
   title: string;
   sub: string;
@@ -64,7 +70,6 @@ interface SecondaryRole {
 
 const VOLUNTEER_ROLE: SecondaryRole = {
   id: 'volunteer',
-  n: '02',
   meta: 'GÖNÜLLÜ',
   title: 'Gönüllü olarak başla',
   sub: 'Gördüğün engeli 30 saniyede haritaya işle.',
@@ -76,27 +81,33 @@ function BuddyPrimaryButton({ onPress }: { onPress: () => void }) {
   const press = useSharedValue(0);
   const mount = useSharedValue(0);
   const glow = useSharedValue(0.55);
+  const orbit = useSharedValue(0);
   const buttonRef = useRef<View>(null);
 
   useEffect(() => {
-    mount.value = withTiming(1, { duration: 360 });
+    mount.value = withTiming(1, { duration: 540, easing: Easing.out(Easing.cubic) });
     glow.value = withRepeat(
       withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.sin) }),
       -1,
       true,
+    );
+    orbit.value = withRepeat(
+      withTiming(1, { duration: 9000, easing: Easing.linear }),
+      -1,
+      false,
     );
     const t = setTimeout(() => {
       const node = buttonRef.current ? findNodeHandle(buttonRef.current) : null;
       if (node) AccessibilityInfo.setAccessibilityFocus(node);
     }, 250);
     return () => clearTimeout(t);
-  }, [mount, glow]);
+  }, [mount, glow, orbit]);
 
   const circleStyle = useAnimatedStyle(() => ({
     transform: [
       {
         scale:
-          interpolate(mount.value, [0, 1], [0.94, 1]) *
+          interpolate(mount.value, [0, 1], [0.92, 1]) *
           interpolate(press.value, [0, 1], [1, 0.97]),
       },
     ],
@@ -105,100 +116,115 @@ function BuddyPrimaryButton({ onPress }: { onPress: () => void }) {
 
   const glowProps = useAnimatedProps(() => ({ opacity: glow.value }));
 
+  const orbitStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${orbit.value * 360}deg` }],
+    opacity: interpolate(mount.value, [0, 1], [0, 1]),
+  }));
+
+  const orbitRingStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(mount.value, [0, 1], [0, 0.9]),
+  }));
+
+  const indexStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(mount.value, [0, 1], [0, 1]),
+    transform: [{ translateY: interpolate(mount.value, [0, 1], [-6, 0]) }],
+  }));
+
   return (
     <View style={styles.buddyBlock} pointerEvents="box-none">
-      <Pressable
-        ref={buttonRef}
-        onPress={onPress}
-        onPressIn={() => {
-          press.value = withTiming(1, { duration: 120 });
-        }}
-        onPressOut={() => {
-          press.value = withTiming(0, { duration: 220 });
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Sesle başla. Görme engelli için Buddy modu."
-        accessibilityHint="Buddy ekranını açar, çevreni sesle anlatır."
-        hitSlop={20}
-        style={styles.buddyHitArea}
-      >
-        <Animated.View style={[styles.buddyCircle, circleStyle]}>
-          <View
-            pointerEvents="none"
-            style={StyleSheet.absoluteFill}
-            accessible={false}
-            importantForAccessibility="no"
-          >
-            <Svg width="100%" height="100%">
-              <Defs>
-                <RadialGradient id="onboardingBuddyGlow" cx="50%" cy="42%" r="60%">
-                  <Stop offset="0%" stopColor={BUDDY_ACCENT} stopOpacity="0.26" />
-                  <Stop offset="60%" stopColor={BUDDY_ACCENT} stopOpacity="0.06" />
-                  <Stop offset="100%" stopColor={BUDDY_ACCENT} stopOpacity="0" />
-                </RadialGradient>
-              </Defs>
-              <AnimatedRect
-                x="0"
-                y="0"
-                width="100%"
-                height="100%"
-                fill="url(#onboardingBuddyGlow)"
-                animatedProps={glowProps}
-              />
-            </Svg>
-          </View>
+      <Animated.View style={[styles.buddyCaption, indexStyle]} pointerEvents="none">
+        <Text style={styles.captionText}>{GREETING_DISPLAY}</Text>
+      </Animated.View>
 
-          {[0, 1, 2].map((i) => {
-            const size = RING_BASE + i * RING_STEP;
-            return (
-              <View
-                key={i}
-                pointerEvents="none"
-                style={[
-                  styles.buddyRing,
-                  {
-                    width: size,
-                    height: size,
-                    marginLeft: -size / 2,
-                    marginTop: -size / 2,
-                    opacity: 1 - i * 0.25,
-                  },
-                ]}
-              />
-            );
-          })}
+      <View style={styles.buddyStage} pointerEvents="box-none">
+        <Animated.View style={[styles.orbitRing, orbitRingStyle]} pointerEvents="none" />
 
-          <View style={styles.buddyPill} pointerEvents="none">
-            <PulseDot color={BUDDY_ACCENT} size={6} duration={1400} />
-            <Text style={styles.buddyPillText}>BUDDY HAZIR</Text>
-          </View>
-
-          <View style={styles.buddyIconWrap} pointerEvents="none">
-            <LottieView
-              source={HERO_ANIMATION}
-              autoPlay
-              loop
-              style={styles.buddyLottie}
-              resizeMode="contain"
-            />
-          </View>
-
-          <Text style={styles.buddyLabel}>Sesle başla</Text>
-
-          <View style={styles.buddyHintRow} pointerEvents="none">
-            <Ionicons name="hand-left-outline" size={12} color="rgba(91,212,185,0.78)" />
-            <Text style={styles.buddyHintText}>Dokun, başlasın</Text>
+        <Animated.View style={[styles.orbitWrap, orbitStyle]} pointerEvents="none">
+          <View style={styles.orbitDotHalo}>
+            <View style={styles.orbitDotCore} />
           </View>
         </Animated.View>
-      </Pressable>
 
-      <Text
-        style={styles.buddyCaption}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      >
-        Görme engelli · Buddy
-      </Text>
+        <Pressable
+          ref={buttonRef}
+          onPress={onPress}
+          onPressIn={() => {
+            press.value = withTiming(1, { duration: 120 });
+          }}
+          onPressOut={() => {
+            press.value = withTiming(0, { duration: 220 });
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Sesle başla."
+          accessibilityHint="Buddy ekranını açar, çevreni sesle anlatır."
+          hitSlop={20}
+          style={styles.buddyHitArea}
+        >
+          <Animated.View style={[styles.buddyCircle, circleStyle]}>
+            <View
+              pointerEvents="none"
+              style={StyleSheet.absoluteFill}
+              accessible={false}
+              importantForAccessibility="no"
+            >
+              <Svg width="100%" height="100%">
+                <Defs>
+                  <RadialGradient id="onboardingBuddyGlow" cx="50%" cy="42%" r="60%">
+                    <Stop offset="0%" stopColor={BUDDY_ACCENT} stopOpacity="0.26" />
+                    <Stop offset="60%" stopColor={BUDDY_ACCENT} stopOpacity="0.06" />
+                    <Stop offset="100%" stopColor={BUDDY_ACCENT} stopOpacity="0" />
+                  </RadialGradient>
+                </Defs>
+                <AnimatedRect
+                  x="0"
+                  y="0"
+                  width="100%"
+                  height="100%"
+                  fill="url(#onboardingBuddyGlow)"
+                  animatedProps={glowProps}
+                />
+              </Svg>
+            </View>
+
+            {[0, 1, 2].map((i) => {
+              const size = RING_BASE + i * RING_STEP;
+              return (
+                <View
+                  key={i}
+                  pointerEvents="none"
+                  style={[
+                    styles.buddyRing,
+                    {
+                      width: size,
+                      height: size,
+                      marginLeft: -size / 2,
+                      marginTop: -size / 2,
+                      opacity: 1 - i * 0.25,
+                    },
+                  ]}
+                />
+              );
+            })}
+
+            <View style={styles.buddyIconWrap} pointerEvents="none">
+              <LottieView
+                source={HERO_ANIMATION}
+                autoPlay
+                loop
+                style={styles.buddyLottie}
+                resizeMode="contain"
+              />
+            </View>
+
+            <Text style={styles.buddyLabel}>Sesle başla</Text>
+
+            <View style={styles.buddyHintRow} pointerEvents="none">
+              <Ionicons name="hand-left-outline" size={12} color="rgba(91,212,185,0.78)" />
+              <Text style={styles.buddyHintText}>Dokun, başlasın</Text>
+            </View>
+          </Animated.View>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -229,18 +255,25 @@ function VolunteerCard({ onPress }: { onPress: () => void }) {
       accessibilityLabel={`${VOLUNTEER_ROLE.meta}. ${VOLUNTEER_ROLE.sub}`}
     >
       <Animated.View style={[styles.volunteerCard, cardStyle]}>
-        <View style={[styles.volunteerTone, { backgroundColor: VOLUNTEER_ROLE.tone }]}>
-          <Text style={styles.volunteerToneNumber}>{VOLUNTEER_ROLE.n}</Text>
-          <MapPinIcon size={26} stroke={2.2} />
-        </View>
         <View style={styles.volunteerBody}>
+          <View style={styles.volunteerMetaRow}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={12}
+              color={VOLUNTEER_ROLE.tone}
+              style={styles.volunteerMetaIcon}
+            />
+            <Text style={[styles.volunteerMeta, { color: VOLUNTEER_ROLE.tone }]}>
+              {VOLUNTEER_ROLE.meta}
+            </Text>
+          </View>
           <Text style={styles.volunteerTitle}>{VOLUNTEER_ROLE.title}</Text>
           <Text style={styles.volunteerSub} numberOfLines={1}>
             {VOLUNTEER_ROLE.sub}
           </Text>
         </View>
         <Animated.View style={[styles.volunteerArrow, arrowStyle]}>
-          <Ionicons name="arrow-forward" size={18} color={colors.text.tertiary} />
+          <Ionicons name="arrow-forward" size={15} color={colors.text.secondary} />
         </Animated.View>
       </Animated.View>
     </Pressable>
@@ -262,12 +295,48 @@ function FirmaChip({ onPress }: { onPress: () => void }) {
   );
 }
 
+function Atmosphere() {
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <RadialGradient id="onboardingAtmosphereTop" cx="50%" cy="22%" r="68%">
+            <Stop offset="0%" stopColor={BUDDY_ACCENT} stopOpacity="0.10" />
+            <Stop offset="55%" stopColor={BUDDY_ACCENT} stopOpacity="0.02" />
+            <Stop offset="100%" stopColor={BUDDY_ACCENT} stopOpacity="0" />
+          </RadialGradient>
+          <RadialGradient id="onboardingAtmosphereFloor" cx="50%" cy="100%" r="60%">
+            <Stop offset="0%" stopColor="#0B1220" stopOpacity="0.06" />
+            <Stop offset="100%" stopColor="#0B1220" stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#onboardingAtmosphereTop)" />
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#onboardingAtmosphereFloor)" />
+      </Svg>
+    </View>
+  );
+}
+
 export default function Onboarding() {
   const setRole = useUserStore((s) => s.setRole);
   const setOnboardingComplete = useUserStore((s) => s.setOnboardingComplete);
   const router = useRouter();
+  const greetedRef = useRef(false);
+
+  useEffect(() => {
+    if (greetedRef.current) return;
+    greetedRef.current = true;
+    const t = setTimeout(() => {
+      void speakTts(GREETING);
+    }, GREETING_DELAY_MS);
+    return () => {
+      clearTimeout(t);
+      void stopTts();
+    };
+  }, []);
 
   function pick(role: UserRole, href: Href) {
+    void stopTts();
     setRole(role);
     setOnboardingComplete(true);
     router.replace(href);
@@ -275,8 +344,10 @@ export default function Onboarding() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom', 'left', 'right']}>
+      <Atmosphere />
+
       <View style={styles.header}>
-        <Wordmark step="BAŞLANGIÇ · 1/3" />
+        <Wordmark />
         <FirmaChip onPress={() => pick('company', '/company')} />
       </View>
 
@@ -285,6 +356,11 @@ export default function Onboarding() {
       </View>
 
       <View style={styles.bottomArea}>
+        <View style={styles.divider} pointerEvents="none">
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>VEYA</Text>
+          <View style={styles.dividerLine} />
+        </View>
         <VolunteerCard onPress={() => pick('volunteer', '/volunteer')} />
       </View>
     </SafeAreaView>
@@ -333,7 +409,61 @@ const styles = StyleSheet.create({
   },
   buddyBlock: {
     alignItems: 'center',
-    gap: 18,
+    gap: 22,
+  },
+  buddyCaption: {
+    alignItems: 'center',
+    paddingHorizontal: 10,
+  },
+  captionText: {
+    fontFamily: fontFamily.displayExtra,
+    fontSize: 26,
+    lineHeight: 30,
+    color: colors.text.primary,
+    letterSpacing: -0.6,
+    textAlign: 'center',
+  },
+
+  buddyStage: {
+    width: ORBIT_SIZE,
+    height: ORBIT_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  orbitRing: {
+    position: 'absolute',
+    width: ORBIT_SIZE,
+    height: ORBIT_SIZE,
+    borderRadius: ORBIT_SIZE / 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(91,212,185,0.22)',
+    borderStyle: 'dashed',
+  },
+  orbitWrap: {
+    position: 'absolute',
+    width: ORBIT_SIZE,
+    height: ORBIT_SIZE,
+    alignItems: 'center',
+  },
+  orbitDotHalo: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(91,212,185,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -5,
+  },
+  orbitDotCore: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: BUDDY_ACCENT,
+    shadowColor: BUDDY_ACCENT,
+    shadowOpacity: 0.85,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
   },
   buddyHitArea: {
     width: BUDDY_DIAMETER,
@@ -362,19 +492,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
-  },
-  buddyPill: {
-    position: 'absolute',
-    top: 28,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  buddyPillText: {
-    fontFamily: fontFamily.monoBold,
-    fontSize: 10.5,
-    color: BUDDY_ACCENT,
-    letterSpacing: 1.7,
   },
   buddyIconWrap: {
     width: 140,
@@ -406,73 +523,83 @@ const styles = StyleSheet.create({
     color: 'rgba(91,212,185,0.78)',
     letterSpacing: 0.8,
   },
-  buddyCaption: {
-    fontFamily: fontFamily.mono,
-    fontSize: 11,
-    letterSpacing: 1.4,
-    color: colors.text.tertiary,
-    textTransform: 'uppercase',
-  },
 
   bottomArea: {
     paddingHorizontal: spacing.s4,
     paddingBottom: spacing.s4,
+    gap: spacing.s3,
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: spacing.s2,
+  },
+  dividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border.divider,
+  },
+  dividerText: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    color: colors.text.tertiary,
+    letterSpacing: 2.4,
   },
   volunteerCard: {
     flexDirection: 'row',
-    alignItems: 'stretch',
-    backgroundColor: colors.bg.elevated,
-    borderRadius: 18,
-    borderWidth: 1,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border.divider,
-    overflow: 'hidden',
+    paddingVertical: 14,
+    paddingLeft: 16,
+    paddingRight: 42,
+    minHeight: 68,
     shadowColor: '#0B1220',
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
-    minHeight: 84,
-  },
-  volunteerTone: {
-    width: 72,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  volunteerToneNumber: {
-    fontFamily: fontFamily.displayExtra,
-    fontSize: 22,
-    color: '#fff',
-    letterSpacing: -0.8,
-    lineHeight: 22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
   volunteerBody: {
     flex: 1,
-    paddingVertical: 14,
-    paddingLeft: 14,
-    paddingRight: 40,
     justifyContent: 'center',
-    gap: 4,
+    gap: 3,
+  },
+  volunteerMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  volunteerMetaIcon: {
+    opacity: 0.9,
+  },
+  volunteerMeta: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    letterSpacing: 1.8,
   },
   volunteerTitle: {
     fontFamily: fontFamily.display,
-    fontSize: 17,
+    fontSize: 16,
     color: colors.text.primary,
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   volunteerSub: {
     fontFamily: fontFamily.body,
-    fontSize: 12.5,
-    color: colors.text.secondary,
-    lineHeight: 17,
+    fontSize: 12,
+    color: colors.text.tertiary,
+    lineHeight: 16,
   },
   volunteerArrow: {
     position: 'absolute',
-    right: 14,
+    right: 16,
     top: '50%',
-    marginTop: -10,
-    width: 20,
-    height: 20,
+    marginTop: -8,
+    width: 16,
+    height: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -66,8 +66,52 @@ export function useBuddyVoice({
   const isTranscribing = useRef(false);
   const permissionGranted = useRef(false);
   const recorderReady = useRef(false);
+  const recordingRef = useRef(false);
+  const startInFlight = useRef(false);
+  const recorderStopForPlayback = useRef<Promise<void> | null>(null);
 
   enabledRef.current = enabled;
+
+  useEffect(() => {
+    recordingRef.current = recorderState.isRecording;
+  }, [recorderState.isRecording]);
+
+  const configureRecordingAudioMode = useCallback(async () => {
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
+      interruptionMode: 'mixWithOthers',
+      shouldRouteThroughEarpiece: false,
+    });
+  }, []);
+
+  const startRecording = useCallback(async () => {
+    if (!recorderReady.current) return;
+    if (!permissionGranted.current) return;
+    if (recordingRef.current || startInFlight.current) return;
+    if (ttsGate.current || isTranscribing.current) return;
+
+    startInFlight.current = true;
+    try {
+      if (recorderStopForPlayback.current) {
+        await recorderStopForPlayback.current;
+      }
+      await configureRecordingAudioMode();
+      if (!enabledRef.current || ttsGate.current || isTranscribing.current) return;
+      await recorder.prepareToRecordAsync({
+        ...RecordingPresets.HIGH_QUALITY,
+        isMeteringEnabled: true,
+      });
+      recorder.record();
+      recordingRef.current = true;
+      setListening(true);
+      onListeningChange?.(true);
+    } catch (err) {
+      console.warn('[voice] record start failed', err);
+    } finally {
+      startInFlight.current = false;
+    }
+  }, [configureRecordingAudioMode, recorder, onListeningChange]);
 
   useEffect(() => {
     const unsub = subscribeTtsState((speaking) => {
@@ -78,26 +122,31 @@ export function useBuddyVoice({
         aboveThresholdMs.current = 0;
         silenceMs.current = 0;
         segmentMs.current = 0;
+        if (recordingRef.current) {
+          recordingRef.current = false;
+          setListening(false);
+          onListeningChange?.(false);
+          const stopPromise = recorder
+            .stop()
+            .catch(() => {})
+            .finally(() => {
+              if (recorderStopForPlayback.current === stopPromise) {
+                recorderStopForPlayback.current = null;
+              }
+            });
+          recorderStopForPlayback.current = stopPromise;
+        }
+        return;
+      }
+
+      if (enabledRef.current && !isTranscribing.current) {
+        setTimeout(() => {
+          void startRecording();
+        }, 80);
       }
     });
     return unsub;
-  }, []);
-
-  const startRecording = useCallback(async () => {
-    if (!recorderReady.current) return;
-    if (recorderState.isRecording) return;
-    try {
-      await recorder.prepareToRecordAsync({
-        ...RecordingPresets.HIGH_QUALITY,
-        isMeteringEnabled: true,
-      });
-      recorder.record();
-      setListening(true);
-      onListeningChange?.(true);
-    } catch (err) {
-      console.warn('[voice] record start failed', err);
-    }
-  }, [recorder, recorderState.isRecording, onListeningChange]);
+  }, [recorder, startRecording, onListeningChange]);
 
   const speakAssistant = useCallback(
     async (text: string) => {
@@ -116,6 +165,7 @@ export function useBuddyVoice({
     setListening(false);
     onListeningChange?.(false);
     try {
+      recordingRef.current = false;
       await recorder.stop();
       const uri = recorder.uri;
       if (!uri) return;
@@ -173,17 +223,13 @@ export function useBuddyVoice({
         return;
       }
       permissionGranted.current = true;
-      await setAudioModeAsync({
-        allowsRecording: true,
-        playsInSilentMode: true,
-        interruptionMode: 'mixWithOthers',
-      });
       recorderReady.current = true;
       await startRecording();
     })();
     return () => {
       cancelled = true;
       recorderReady.current = false;
+      recordingRef.current = false;
       recorder.stop().catch(() => {});
       setListening(false);
       onListeningChange?.(false);

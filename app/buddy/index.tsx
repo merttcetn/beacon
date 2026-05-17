@@ -44,10 +44,6 @@ const DEBUG_TAP_WINDOW_MS = 1500;
 const ONBOARDING_SWIPE_DISTANCE = -70;
 const ONBOARDING_SWIPE_VELOCITY = -0.45;
 
-function speak(text: string) {
-  void speakTts(text);
-}
-
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
 export default function BuddyMain() {
@@ -178,6 +174,54 @@ export default function BuddyMain() {
     ? 'listening'
     : 'idle';
 
+  // Buddy'nin okuduğu metin uzadıkça font'u dinamik küçült.
+  // Oval içindeki ttsWrap (top:220, footer ~bottom:60) için kullanılabilir
+  // dikey alan ~130px. Char + kelime sayısının ikisini de hesaba katıp
+  // daha sıkı olanı seçiyoruz; sonra Reanimated ile yumuşak geçiş.
+  const ttsFontSize = useSharedValue(22);
+  const ttsLineHeight = useSharedValue(30);
+  const ttsLetterSpacing = useSharedValue(-0.25);
+
+  useEffect(() => {
+    const text = (lastSpoken || '').trim();
+    const len = text.length;
+    const words = text ? text.split(/\s+/).length : 0;
+
+    const sizeByChars =
+      len > 240 ? 13 :
+      len > 190 ? 14 :
+      len > 150 ? 16 :
+      len > 115 ? 18 :
+      len > 80  ? 20 :
+      len > 50  ? 22 :
+                  25;
+
+    const sizeByWords =
+      words > 40 ? 13 :
+      words > 30 ? 15 :
+      words > 22 ? 17 :
+      words > 16 ? 19 :
+      words > 10 ? 21 :
+      words > 6  ? 23 :
+                   25;
+
+    const target = Math.min(sizeByChars, sizeByWords);
+    const targetLine = Math.round(target * 1.35);
+    // Küçük fontlarda harf aralığını biraz açarak okunabilirliği koru.
+    const targetSpacing = target >= 22 ? -0.25 : target >= 18 ? 0 : 0.15;
+
+    const cfg = { duration: 320, easing: Easing.out(Easing.cubic) };
+    ttsFontSize.value = withTiming(target, cfg);
+    ttsLineHeight.value = withTiming(targetLine, cfg);
+    ttsLetterSpacing.value = withTiming(targetSpacing, cfg);
+  }, [lastSpoken, ttsFontSize, ttsLineHeight, ttsLetterSpacing]);
+
+  const animatedTtsTextStyle = useAnimatedStyle(() => ({
+    fontSize: ttsFontSize.value,
+    lineHeight: ttsLineHeight.value,
+    letterSpacing: ttsLetterSpacing.value,
+  }));
+
   function handleStatusChipTap() {
     const now = Date.now();
     debugTapTimes.current = [
@@ -307,12 +351,6 @@ export default function BuddyMain() {
     };
   }, [glow]);
 
-  function replay() {
-    if (!lastSpoken) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    speak(lastSpoken);
-  }
-
   const stopEnabled = true;
 
   const progressFillStyle = useAnimatedStyle(() => ({
@@ -353,12 +391,7 @@ export default function BuddyMain() {
           </View>
         </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Son okunan mesajı tekrarla"
-        onPress={replay}
-        style={styles.oval}
-      >
+      <View style={styles.oval}>
         <View
           pointerEvents="none"
           style={StyleSheet.absoluteFill}
@@ -416,18 +449,12 @@ export default function BuddyMain() {
           accessibilityLabel={`Şu an okunuyor: ${lastSpoken}`}
         >
           <Text style={styles.ttsLabel}>ŞU AN OKUNUYOR</Text>
-          <Text style={styles.ttsText}>
+          <Animated.Text style={[styles.ttsText, animatedTtsTextStyle]}>
             {lastSpoken || (voiceEnabled ? 'Dinliyorum…' : '...')}
-          </Text>
+          </Animated.Text>
         </View>
 
-        <View style={styles.ovalFooter} pointerEvents="box-none">
-          <View style={styles.askRow}>
-            <Ionicons name="ear-outline" size={14} color="rgba(91,212,185,0.75)" />
-            <Text style={styles.askText}>Ekrana dokun → tekrar dinle</Text>
-          </View>
-        </View>
-      </Pressable>
+      </View>
 
       <View style={styles.stopWrap}>
         <Pressable
@@ -515,7 +542,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.monoBold, fontSize: 11, color: '#5BD4B9', letterSpacing: 1.6,
   },
   waveformWrap: { position: 'absolute', top: 78, left: 0, right: 0 },
-  ttsWrap: { position: 'absolute', top: 220, left: 28, right: 28 },
+  ttsWrap: { position: 'absolute', top: 220, left: 28, right: 28, maxHeight: 150 },
   ttsLabel: {
     fontFamily: fontFamily.mono, fontSize: 13,
     color: 'rgba(244,241,235,0.6)', letterSpacing: 1.5, marginBottom: 12,
@@ -523,14 +550,6 @@ const styles = StyleSheet.create({
   ttsText: {
     fontFamily: fontFamily.display, fontSize: 22, lineHeight: 30,
     color: '#F4F1EB', letterSpacing: -0.25,
-  },
-  ovalFooter: {
-    position: 'absolute', bottom: 18, left: 20, right: 20,
-  },
-  askRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  askText: {
-    fontFamily: fontFamily.bodyMedium, fontSize: 14,
-    color: 'rgba(91,212,185,0.75)', letterSpacing: 0.2,
   },
   stopWrap: { marginTop: 'auto', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 34 },
   stopBtn: {
