@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import type MapView from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppMap, type AppMapMarker } from '@/components/AppMap';
@@ -61,32 +61,44 @@ function VolunteerMapHeader({ onBack }: VolunteerMapHeaderProps) {
 
 export default function VolunteerMap() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [visibleTicket, setVisibleTicket] = useState<Ticket | null>(null);
   const router = useRouter();
   const userTickets = useTicketStore((s) => s.userTickets);
   const mapRef = useRef<MapView>(null);
   const fade = useRef(new Animated.Value(0)).current;
-  const cardTranslateY = fade.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] });
+  const cardTranslateY = fade.interpolate({ inputRange: [0, 1], outputRange: [-24, 0] });
 
   const markers = useMemo<AppMapMarker[]>(
     () => [...userTickets, ...SAMPLE_TICKETS].map(toMarker),
     [userTickets],
   );
 
-  const selectedTicket = selectedId
-    ? userTickets.find((x) => x.id === selectedId) ??
-      SAMPLE_TICKETS.find((x) => x.id === selectedId) ??
-      null
-    : null;
-
   useEffect(() => {
-    if (!selectedId) return;
-    fade.setValue(0);
-    Animated.timing(fade, {
-      toValue: 1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-  }, [selectedId, fade]);
+    const nextTicket = selectedId
+      ? userTickets.find((x) => x.id === selectedId) ??
+        SAMPLE_TICKETS.find((x) => x.id === selectedId) ??
+        null
+      : null;
+
+    if (nextTicket) {
+      setVisibleTicket(nextTicket);
+      Animated.timing(fade, {
+        toValue: 1,
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(fade, {
+        toValue: 0,
+        duration: 220,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) setVisibleTicket(null);
+      });
+    }
+  }, [selectedId, userTickets, fade]);
 
   function handleMarkerTap(id: string) {
     setSelectedId(id);
@@ -115,12 +127,15 @@ export default function VolunteerMap() {
         ref={mapRef}
         markers={markers}
         onMarkerTap={handleMarkerTap}
-        onPress={() => setSelectedId(null)}
+        onPress={(e) => {
+          if (e.nativeEvent.action === 'marker-press') return;
+          setSelectedId(null);
+        }}
       />
 
       <VolunteerMapHeader onBack={handleBack} />
 
-      {selectedTicket ? (
+      {visibleTicket ? (
         <Animated.View
           style={[
             styles.previewWrapper,
@@ -128,29 +143,28 @@ export default function VolunteerMap() {
           ]}
           pointerEvents="box-none"
         >
-          <Pressable
-            style={styles.previewCard}
-            onPress={() => router.push(`/volunteer/pin/${selectedTicket.id}`)}
-          >
+          <View style={styles.previewCard}>
             <View style={styles.previewBody}>
               <Text style={styles.previewTitle} numberOfLines={1}>
-                {selectedTicket.description_tr}
+                {visibleTicket.description_tr}
               </Text>
               <Text style={styles.previewMeta}>
-                {selectedTicket.verification_count} TESPİT · {selectedTicket.severity.toUpperCase()}
+                {visibleTicket.verification_count} TESPİT · {visibleTicket.severity.toUpperCase()}
               </Text>
             </View>
             <Pressable
-              hitSlop={8}
-              onPress={() => setSelectedId(null)}
-              style={styles.previewClose}
+              onPress={() => router.push(`/volunteer/pin/${visibleTicket.id}`)}
+              style={({ pressed }) => [
+                styles.previewDetailBtn,
+                pressed && styles.previewDetailBtnPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Detayını gör"
             >
-              <Ionicons name="close" size={16} color={colors.text.tertiary} />
+              <Text style={styles.previewDetailText}>Detayını gör</Text>
+              <Ionicons name="chevron-forward" size={15} color={colors.text.inverse} />
             </Pressable>
-            <View style={styles.previewChevron}>
-              <Ionicons name="chevron-forward" size={18} color={colors.accent.primary} />
-            </View>
-          </Pressable>
+          </View>
         </Animated.View>
       ) : null}
 
@@ -254,14 +268,19 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.mono, fontSize: 11, color: colors.text.tertiary,
     letterSpacing: 0.6, marginTop: 2,
   },
-  previewClose: {
-    width: 26, height: 26, borderRadius: 13,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.bg.secondary,
+  previewDetailBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingLeft: 12, paddingRight: 9, paddingVertical: 8,
+    borderRadius: 99,
+    backgroundColor: colors.accent.primary,
   },
-  previewChevron: {
-    width: 28, height: 28, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center',
+  previewDetailBtnPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.97 }],
+  },
+  previewDetailText: {
+    fontFamily: fontFamily.bodySemiBold, fontSize: 12.5,
+    color: colors.text.inverse,
   },
 
   bottomLeft: { position: 'absolute', bottom: 96, left: 16, gap: 8 },

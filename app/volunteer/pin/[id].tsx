@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg.primary },
 
   peek: {
-    position: 'absolute', top: 0, left: 0, right: 0, height: 260,
+    position: 'absolute', top: 0, left: 0, right: 0, height: '55%',
   },
   peekPinWrap: {
     position: 'absolute', top: 110, left: '50%',
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   },
 
   sheet: {
-    position: 'absolute', top: 220, left: 0, right: 0, bottom: 0,
+    position: 'absolute', top: '50%', left: 0, right: 0, bottom: 0,
     backgroundColor: colors.bg.elevated,
     borderTopLeftRadius: 28, borderTopRightRadius: 28,
     overflow: 'hidden',
