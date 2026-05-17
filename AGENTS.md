@@ -71,6 +71,12 @@ Dört patern var. Prompt şemalarının **tam tanımı `product-spec.md §6`'da*
 | **C** | Spor Modu | 1 fotoğraf | `equipment_*`, `usage_steps_tr`, `safety_warnings_tr`, `speak_text` | kullanıcı | detaylı anlatım > hız |
 | **D** | Voice Q&A | STT transcript + `screen_context` + frame? + GPS | `interpreted_question`, `answer_speak_text`, `requires_camera`, `requires_action` | kullanıcı (tek tap) | bağlam farkındalığı + doğal Türkçe |
 
+**Orchestrator (spec genişletmesi):** UI ile AI arasında tek giriş noktası `POST /v1/assist`.
+İki event: `buddy_frame` (deterministik → Pattern A) ve `voice` (orchestrator LLM ile niyet
+sınıflandırma → Pattern A/B/C/D'ye dispatch). Sesli ticket akışı: kullanıcı "şunu bildir"
+derse Pattern B → `ticket` payload + çevre özeti tek yanıtta döner; UI bunu n8n'e iletir.
+Servis stateless — UI her isteğe `nearby_tickets` ekler. Detay: `docs/superpowers/plans/`.
+
 **Kritik kurallar (spec §6, §9):**
 - VLM çıktısı **her zaman** Pydantic ile validate edilir; parse hatası güvenli fallback'e düşer (boş/zararsız `speak_text`), exception yutulmaz.
 - `priority` değerleri: `low` / `medium` / `high` / `critical`. `critical` yalnızca anlık fiziksel risk (çarpışma/düşme/araç) — abartma.
@@ -87,6 +93,7 @@ Tüm görsel/ses taşıyan endpoint'ler `multipart/form-data`. VLM endpoint'leri
 
 | Endpoint | Patern | Girdi | Çıktı |
 |---|---|---|---|
+| `POST /v1/assist` | A/B/C/D | `event`, `transcript`\|`audio`, `frame?`, `screen_context`, `lat?`, `lon?`, `recent_guidance?`, `nearby_tickets?` | `AssistResponse` JSON |
 | `POST /v1/buddy` | A | `frame`, `lat?`, `lon?`, `recent_guidance?` | `BuddyAnalysis` JSON |
 | `POST /v1/voice` | D | `transcript` **veya** `audio`, `screen_context`, `frame?`, `lat?`, `lon?` | `VoiceAnswer` JSON |
 | `POST /v1/feedback` | B | `photos` (1-3) | `FeedbackResult` JSON |
@@ -101,6 +108,13 @@ Tüm görsel/ses taşıyan endpoint'ler `multipart/form-data`. VLM endpoint'leri
 yollar; model aynı uyarıyı tekrarlamaz, yalnızca yeni tehlike / belirgin değişim / yeni
 faydalı bilgi olduğunda konuşur. Server-side session memory **yok** (bilinçli karar — app
 orchestrate eder, servis saf fonksiyon kalır).
+
+**Orchestrator (`/v1/assist`) — production tek endpoint:** UI tüm AI akışları için bunu
+kullanır. `event=voice` → orchestrator LLM (sıkı prompt, `temperature=0`) niyeti
+sınıflandırır; `event=buddy_frame` → doğrudan Pattern A. Yanıt zarfı `AssistResponse`:
+`speak_text`, `priority`, `ui_action` (`none`/`open_ticket`/`switch_to_buddy`/`switch_to_sport`),
+`ticket?`, `data?`. Tek tek pattern endpoint'leri (`/v1/buddy` vb.) test/izole kalite testi
+için durur; ikisi de `patterns.py`'yi çağırır (DRY).
 
 ## 6. Adapter Pattern — VLM / STT / TTS
 
@@ -194,3 +208,4 @@ Claude bir plan veya kod değişikliği ürettiğinde Codex'e review için gönd
 
 - **v1 — 16.05.2026** — İlk sürüm. `ai` repo'su Python + FastAPI AI pipeline servisi olarak konumlandı. Scope, mimari, 4 VLM paterni, adapter pattern, konvansiyonlar ve "Codex'in Görevi — Claude Plan Review" bölümü tanımlandı. `CLAUDE.md` bu dosyayı import eder.
 - **v1.1 — 17.05.2026** — Endpoint'ler `/v1/<mod>` şemasına geçti (mod başına tek endpoint, ses yardımcıları `/v1/speech/` altında, batch video `/dev/buddy-video` dev-only). Buddy realtime'a stateless **`recent_guidance`** bağlamı eklendi — app son `speak_text`'leri geri yollar, model tekrarı önler. §5 kontrat tablosu güncellendi.
+- **v1.2 — 17.05.2026** — Orchestrator katmanı: tek endpoint `POST /v1/assist` (2 event), sesli niyet sınıflandırma + dispatch. Pattern mantığı `patterns.py`'ye çıkarıldı (DRY); `orchestrator.py` eklendi. `issue` (VLM-içi) / `ticket` (boundary) ayrımı. `generate_structured`'a `temperature`.
