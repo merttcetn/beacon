@@ -11,6 +11,8 @@ Türkçe rehberlik üreten FastAPI tabanlı backend'dir.
 
 Ana yetenekler:
 
+- **Orchestrator / `/v1/assist`:** UI'nin tüm AI akışları için kullandığı tek giriş noktası;
+  sesli niyeti sınıflandırıp ilgili pattern'a yönlendirir ve sesli ticket akışını yönetir.
 - **Buddy Mode / Pattern A:** tek frame veya video kareleri -> VLM -> güvenlik/rehberlik JSON'u.
 - **Voice Q&A / Pattern D:** transcript veya ses + opsiyonel frame -> VLM -> Türkçe cevap JSON'u.
 - **Feedback / Pattern B:** 1-3 problem fotoğrafı -> VLM -> erişilebilirlik problemi kategorisi.
@@ -66,6 +68,7 @@ http://localhost:8000/test
 ## Güncel Teknik Kararlar
 
 - Python `>=3.13`, FastAPI, Pydantic v2, `uv`.
+- UI tüm AI akışları için tek endpoint `/v1/assist` kullanır; pattern endpoint'leri (`/v1/buddy` vb.) izole test için durur.
 - VLM/structured output implementasyonu şu an **Gemini** üzerinden çalışır.
 - Feature bazlı LLM provider/model seçimi config'te hazırdır, ancak Gemini dışı VLM adapter henüz yoktur.
 - TTS provider seçimi çalışır durumdadır: `TTS_PROVIDER=falai` veya `TTS_PROVIDER=gemini`.
@@ -78,5 +81,5 @@ http://localhost:8000/test
 - VLM provider config'i genel tutuldu, fakat çalışan VLM adapter yalnızca Gemini'dir.
 - `scripts/demo_buddy.py` WAV parçalarını birleştirir. `TTS_PROVIDER=falai` ve MP3 çıktı kullanılıyorsa
   script'in birleştirme kısmı uyumsuz olabilir; demo için `TTS_PROVIDER=gemini` veya fal.ai WAV çıktı tercih edilir.
-- `/buddy/analyze-video` sunucu tarafında ffmpeg ister.
+- `/dev/buddy-video` sunucu tarafında ffmpeg ister.
 - Model ID'leri ve preview model davranışları provider tarafında değişebilir; `.env` ile güncellenebilir tutulmuştur.

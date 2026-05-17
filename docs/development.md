@@ -4,7 +4,7 @@
 
 - Python `>=3.13`
 - `uv`
-- `ffmpeg` (`/buddy/analyze-video` ve `scripts/demo_buddy.py` için)
+- `ffmpeg` (`/dev/buddy-video` ve `scripts/demo_buddy.py` için)
 - Gemini API key
 - fal.ai API key (server-side TTS/STT için)
 
@@ -54,12 +54,13 @@ http://localhost:8000/test
 
 Desteklediği akışlar:
 
-- tek görsel ile `/buddy/analyze`
-- video oynatırken tarayıcıda frame yakalayıp `/buddy/analyze`
-- text veya mikrofon kaydıyla `/voice/ask` ve `/stt`
-- `/feedback/categorize`
-- `/sport/describe`
-- `/tts`
+- **Canlı Simülasyon:** bir video telefon kamerası gibi oynatılır; her N saniyede bir kare
+  `/v1/assist`'e `event=buddy_frame` olarak gider. Kullanıcı dilediği an sesli soru sorabilir
+  → `event=voice`. Bir zaman çizelgesi her yanıtın intent/priority/ui_action/ticket bilgisini
+  gösterir; bir TTS kuyruğu konuşmaların kesilmemesini sağlar.
+- Manuel tek `/v1/assist` çağrısı.
+- Açılır panelde izole tekil endpoint testleri: `/v1/buddy`, `/v1/voice` + `/v1/speech/transcribe`,
+  `/v1/feedback`, `/v1/sport`.
 
 Notlar:
 
@@ -73,12 +74,17 @@ Notlar:
 uv run pytest
 ```
 
-Mevcut test kapsamı:
+Mevcut test kapsamı (~41 test):
 
+- orchestrator dispatch (`/v1/assist` event → intent → pattern)
+- pattern fonksiyonları (Pattern A/B/C/D)
+- Pydantic şemaları
+- prompt builder'lar
+- config yükleme
+- gemini timeout/temperature override'ları
+- `/v1/assist` endpoint'i
 - `/health` smoke testi
-- Haversine mesafe hesabı
-- known issues seed yükleme
-- nearby issue sıralama/filtre
+- geo (Haversine mesafe + known issues seed + nearby filtre)
 
 ## Lint
 
@@ -97,8 +103,8 @@ uv run python scripts/demo_buddy.py path/to/video.mp4 output/buddy_demo.wav
 Bu script:
 
 1. ffmpeg ile videodan her `GEMINI_FRAME_INTERVAL_SECONDS` saniyede bir kare çıkarır.
-2. Her kareyi `POST /buddy/analyze` mantığıyla işler.
-3. `speak_text` varsa `/tts` ile ses üretir.
+2. Her kareyi `POST /v1/buddy` mantığıyla işler.
+3. `speak_text` varsa `/v1/speech/synthesize` ile ses üretir.
 4. WAV parçalarını tek dosyada birleştirir.
 
 Önemli caveat:
@@ -120,11 +126,11 @@ FALAI_TTS_AUDIO_FORMAT=wav
 ## Frontend Entegrasyon Sırası
 
 1. `/health` ile backend erişimini doğrula.
-2. `/buddy/analyze` için tek frame gönder.
-3. `speak_text` alanını app TTS'i veya `/tts` ile oku.
-4. `/voice/ask` için önce transcript-only entegrasyon yap.
-5. Gerekiyorsa `/stt` veya `/voice/ask` audio fallback ekle.
-6. Feedback/Spor endpoint'lerini ayrı akışlara bağla.
+2. Tek endpoint `/v1/assist`'i entegre et: proaktif kareler için `event=buddy_frame`,
+   kullanıcı konuştuğunda `event=voice` gönder. `speak_text`'i app TTS'i veya
+   `/v1/speech/synthesize` ile oku; `ui_action`/`ticket`'a göre UI aksiyonu al.
+3. İzole kullanım için tekil `/v1/*` pattern endpoint'leri (`/v1/buddy`, `/v1/voice`,
+   `/v1/feedback`, `/v1/sport`) mevcuttur; production akışı `/v1/assist` üzerinden gider.
 
 ## Deployment / Tünel
 
@@ -147,6 +153,8 @@ ai/
   src/ai_pipeline/
     config.py
     main.py
+    patterns.py
+    orchestrator.py
     gemini.py
     tts.py
     stt.py

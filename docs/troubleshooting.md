@@ -21,7 +21,7 @@ cp .env.example .env
 
 Belirti:
 
-- `/buddy/analyze` `speak_text=""`, `priority="low"` döner.
+- `/v1/buddy` `speak_text=""`, `priority="low"` döner.
 - Feedback/Spor boş model döner.
 
 Olası nedenler:
@@ -42,7 +42,7 @@ GEMINI_TIMEOUT_SECONDS=60
 
 Loglarda `Gemini çağrısı başarısız` mesajlarını incele.
 
-## `TTS_PROVIDER=falai` İle `/tts` 503 Dönüyor
+## `TTS_PROVIDER=falai` İle `/v1/speech/synthesize` 503 Dönüyor
 
 Olası nedenler:
 
@@ -69,7 +69,7 @@ GEMINI_TTS_MODEL=gemini-3.1-flash-tts-preview
 GEMINI_TTS_VOICE_NAME=Sulafat
 ```
 
-## `/stt` Boş Transcript Dönüyor
+## `/v1/speech/transcribe` Boş Transcript Dönüyor
 
 Olası nedenler:
 
@@ -88,7 +88,7 @@ FALAI_STT_TIMEOUT_SECONDS=45
 
 Alternatif olarak `FALAI_STT_LANGUAGE` boş bırakılıp auto-detect denenebilir.
 
-## `/buddy/analyze-video` Çalışmıyor
+## `/dev/buddy-video` Çalışmıyor
 
 Olası nedenler:
 
@@ -108,6 +108,26 @@ Kısıtları düşür:
 VIDEO_MAX_FRAMES=8
 VIDEO_CONCURRENCY=2
 GEMINI_FRAME_INTERVAL_SECONDS=5
+```
+
+## `/v1/assist` Yanıtı Çok Geç Geliyor
+
+Neden:
+
+- `event=voice` akışında orchestrator önce bir LLM (Gemini) çağrısıyla niyeti sınıflandırır;
+  geçici API latency'si bu çağrıyı yavaşlatabilir.
+
+Davranış:
+
+- Orchestrator çağrısı `ORCHESTRATOR_TIMEOUT_SECONDS` (varsayılan `10`) +
+  `ORCHESTRATOR_MAX_RETRIES` (varsayılan `1`) ile sınırlıdır. En kötü durumda ~21 sn sonra
+  güvenli bir `unknown` fallback'e düşer; servis bloke olmaz.
+
+Daha hızlı fail-fast için bu değerleri düşür:
+
+```env
+ORCHESTRATOR_TIMEOUT_SECONDS=5
+ORCHESTRATOR_MAX_RETRIES=0
 ```
 
 ## Test Konsolu Mikrofonu Açmıyor

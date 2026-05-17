@@ -35,6 +35,12 @@ eklenebilmesi için feature bazında tutulur.
 | `PATTERN_D_LLM_MODEL` | `gemini-3.1-pro-preview` | Voice Q&A modeli |
 | `SEED_DATA_LLM_PROVIDER` | `gemini` | Seed/batch görsel analizi provider'ı |
 | `SEED_DATA_LLM_MODEL` | `gemini-3.1-flash-lite` | Seed/batch modeli |
+| `ORCHESTRATOR_LLM_PROVIDER` | `gemini` | `/v1/assist` niyet sınıflandırma provider'ı |
+| `ORCHESTRATOR_LLM_MODEL` | `gemini-3.1-flash-lite` | Niyet sınıflandırma modeli (hız öncelikli) |
+| `ORCHESTRATOR_TEMPERATURE` | `0.0` | Sınıflandırma çağrısının sıcaklığı; deterministik için `0.0` |
+| `ORCHESTRATOR_MIN_CONFIDENCE` | `0.6` | Bu eşiğin altında `report_issue`/`switch_mode` geri dönülmez aksiyon yerine açıklama ister |
+| `ORCHESTRATOR_TIMEOUT_SECONDS` | `10` | Orchestrator çağrısı timeout'u; fail-fast |
+| `ORCHESTRATOR_MAX_RETRIES` | `1` | Orchestrator retry sayısı; latency'ye duyarlı tutulur |
 
 Notlar:
 
@@ -42,6 +48,8 @@ Notlar:
 - Gemini dışı provider seçilirse endpoint fallback'e düşer; adapter implementasyonu yoktur.
 - Eski `GEMINI_PATTERN_*_MODEL` alanları kodda durur, ancak yeni config standardı
   `PATTERN_*_LLM_MODEL` alanlarıdır.
+- Orchestrator hızlı bir model + düşük timeout/retry kullanır: yavaş bir niyet
+  sınıflandırması kullanıcıyı bekletmek yerine hızlıca güvenli bir fallback'e düşer.
 
 ## Gemini Genel Ayarları
 
@@ -93,14 +101,14 @@ Geçerli değerler:
 | `FALAI_API_KEY` | boş | Alternatif key adı |
 | `FALAI` | boş | Mevcut ortamda kullanılan alternatif key adı |
 | `FALAI_TTS_MODEL` | `fal-ai/minimax/speech-02-hd` | TTS model endpoint'i |
-| `FALAI_TTS_VOICE_ID` | `Wise_Woman` | Ses ID |
+| `FALAI_TTS_VOICE_ID` | `Friendly_Person` | Ses ID |
 | `FALAI_TTS_LANGUAGE_BOOST` | `Turkish` | Türkçe yönlendirme |
 | `FALAI_TTS_OUTPUT_FORMAT` | `url` | fal response output modu |
 | `FALAI_TTS_AUDIO_FORMAT` | `mp3` | `mp3`, `wav`, `flac`, `pcm` |
 | `FALAI_TTS_SAMPLE_RATE_HZ` | `32000` | Audio sample rate |
 | `FALAI_TTS_BITRATE` | `128000` | Bitrate |
 | `FALAI_TTS_CHANNEL` | `1` | Mono |
-| `FALAI_TTS_SPEED` | `1.0` | Konuşma hızı |
+| `FALAI_TTS_SPEED` | `1.1` | Konuşma hızı |
 | `FALAI_TTS_VOLUME` | `1.0` | Ses seviyesi |
 | `FALAI_TTS_PITCH` | `0` | Pitch |
 | `FALAI_TTS_EMOTION` | `neutral` | Duygu |
@@ -116,7 +124,7 @@ GEMINI_TTS_TIMEOUT_SECONDS=20
 GEMINI_TTS_SAMPLE_RATE_HZ=24000
 ```
 
-Gemini TTS kodu PCM çıktısını WAV içine sarar ve `/tts` response'unu `audio/wav` döndürür.
+Gemini TTS kodu PCM çıktısını WAV içine sarar ve `/v1/speech/synthesize` response'unu `audio/wav` döndürür.
 
 ## STT Ayarları
 
@@ -130,7 +138,7 @@ Server-side STT fal.ai üzerinden yapılır.
 
 Önerilen mimari:
 
-- Mobil app mümkünse kendi STT'sini yapıp `/voice/ask` içine `transcript` göndersin.
+- Mobil app mümkünse kendi STT'sini yapıp `/v1/voice` içine `transcript` göndersin.
 - Server-side STT demo/fallback için kullanılsın.
 
 ## Geo ve Video Ayarları
@@ -138,7 +146,7 @@ Server-side STT fal.ai üzerinden yapılır.
 | Env | Varsayılan | Açıklama |
 |---|---:|---|
 | `KNOWN_ISSUES_RADIUS_M` | `150.0` | Seed problem arama yarıçapı |
-| `VIDEO_MAX_FRAMES` | `20` | `/buddy/analyze-video` maksimum kare sayısı |
+| `VIDEO_MAX_FRAMES` | `20` | `/dev/buddy-video` maksimum kare sayısı |
 | `VIDEO_CONCURRENCY` | `4` | Video kareleri için paralel VLM çağrı limiti |
 
 ## Servis Ayarları

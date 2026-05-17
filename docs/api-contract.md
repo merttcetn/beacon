@@ -44,12 +44,11 @@ http://localhost:8000/test
 
 Bu sayfa şunları test eder:
 
-- tek frame Buddy analizi
-- video üzerinden gerçek zamanlı Buddy simülasyonu
-- yazılı veya mikrofon kayıtlı Voice Q&A
-- Feedback kategorize
-- Spor anlatımı
-- server-side TTS
+- canlı simülasyon — video `/v1/assist` üzerinden `buddy_frame` olarak işlenir; kullanıcı
+  dilediği an sesli soru sorar → `voice`
+- manuel tek `/v1/assist` çağrısı
+- izole tekil endpoint testleri (buddy / voice / feedback / sport)
+- server-side TTS / STT
 
 ## `POST /v1/assist`
 

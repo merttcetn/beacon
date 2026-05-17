@@ -9,13 +9,18 @@ JSON veya ses çıktısı üretir.
 ## Yüksek Seviye Akış
 
 ```text
-Expo app / test console
+Expo app / test simülatörü
   |
   | multipart/form-data
   v
 FastAPI (`ai_pipeline.main`)
   |
-  |-- Pattern A/B/C/D orchestration
+  |-- POST /v1/assist  (orchestrator — tek giriş noktası)
+  |     |-- event=buddy_frame -> doğrudan Pattern A
+  |     |-- event=voice       -> orchestrator LLM niyet sınıflandırma
+  |     |                        -> Pattern A/B/C/D'ye dispatch
+  |     v
+  |-- patterns.py  (Pattern A/B/C/D çağrılabilir fonksiyonları)
   |-- known_issues geo enrichment
   |-- server-side STT/TTS helpers
   v
@@ -26,12 +31,17 @@ Provider clients
   |-- fal.ai STT
 ```
 
+`POST /v1/assist`, UI'nin AI ile tek giriş noktasıdır: sesli niyeti sınıflandırır ve uygun
+pattern'a dispatch eder. Tek tek pattern endpoint'leri (`/v1/buddy` vb.) izole test için durur.
+
 ## Modüller
 
 | Modül | Sorumluluk |
 |---|---|
 | `config.py` | `.env` ayarları; model/provider/timeout/interval seçimleri |
-| `main.py` | FastAPI app, endpoint'ler, endpoint orchestration |
+| `main.py` | FastAPI app, endpoint'ler; pattern ve orchestrator katmanına yönlendirir |
+| `patterns.py` | Pattern A/B/C/D çağrılabilir fonksiyonları (`analyze_buddy_frame`, `describe_sport`, `categorize_feedback`, `answer_voice`) + `model_for` — endpoint ve orchestrator için DRY ortak katman |
+| `orchestrator.py` | `/v1/assist` — niyet sınıflandırma (`decide()`) + dispatch (`handle_assist()`) |
 | `gemini.py` | Gemini structured VLM ve Gemini TTS çağrıları |
 | `tts.py` | TTS provider dispatch: fal.ai veya Gemini |
 | `stt.py` | fal.ai tabanlı server-side speech-to-text |
@@ -39,8 +49,40 @@ Provider clients
 | `prompts.py` | VLM system/user prompt builder'ları |
 | `geo.py` | Statik known issue seed yükleme ve Haversine filtre |
 | `frames.py` | ffmpeg ile video -> frame extraction |
-| `static/test.html` | Browser tabanlı manuel test konsolu |
+| `static/test.html` | Browser tabanlı `/v1/assist` simülatörü ve izole endpoint testleri |
 | `scripts/demo_buddy.py` | App olmadan video -> Buddy -> TTS demo script'i |
+
+## Orchestrator
+
+`POST /v1/assist`, UI'nin tüm AI akışları için kullandığı tek giriş noktasıdır. Servis
+stateless'tır — UI her isteğe kullanıcının çevresindeki kayıtlı ticket'ları (`nearby_tickets`)
+ekler.
+
+İki event:
+
+- `buddy_frame` — proaktif sessiz kare. Deterministik: niyet sınıflandırma yapılmadan
+  doğrudan Pattern A'ya gider, LLM ile sınıflandırma maliyeti yoktur.
+- `voice` — kullanıcı konuştu. Bir orchestrator LLM çağrısı sıkı bir prompt ile
+  `temperature=0`'da niyeti sınıflandırır ve Pattern A/B/C/D'ye dispatch eder.
+
+Niyetler: `ask`, `describe_sport`, `report_issue`, `nearby_tickets`, `switch_mode`,
+`stop`, `unknown`.
+
+Sesli ticket akışı: kullanıcı "şunu bildir" derse → Pattern B → tek yanıtta bir `ticket`
+payload (+ çevre özeti) döner; UI bunu n8n'e iletir.
+
+Yanıt zarfı `AssistResponse`:
+
+- `event` — istekteki event echo'su
+- `intent` — sınıflandırılan niyet
+- `speak_text` — TTS ile okunacak Türkçe metin
+- `priority` — `low`/`medium`/`high`/`critical`
+- `ui_action` — `none`/`open_ticket`/`switch_to_buddy`/`switch_to_sport`
+- `ticket?` — `open_ticket` durumunda n8n'e iletilecek ticket payload'u
+- `data?` — ilgili pattern'ın ham çıktısı
+
+`orchestrator.py` iki fonksiyon sunar: `decide()` niyet sınıflandırıcı, `handle_assist()`
+dispatcher. İkisi de — endpoint'ler gibi — `patterns.py` fonksiyonlarını çağırır (DRY).
 
 ## Pattern Akışları
 
@@ -48,8 +90,8 @@ Provider clients
 
 Endpoint'ler:
 
-- `POST /buddy/analyze`
-- `POST /buddy/analyze-video`
+- `POST /v1/buddy`
+- `POST /dev/buddy-video`
 
 Akış:
 
@@ -71,7 +113,7 @@ Fallback:
 
 Endpoint:
 
-- `POST /voice/ask`
+- `POST /v1/voice`
 
 Akış:
 
@@ -87,7 +129,7 @@ Transcript yoksa:
 
 ```text
 audio
-  -> /stt path (`stt.transcribe`)
+  -> /v1/speech/transcribe path (`stt.transcribe`)
   -> transcript
   -> Pattern D
 ```
@@ -101,7 +143,7 @@ Fallback:
 
 Endpoint:
 
-- `POST /feedback/categorize`
+- `POST /v1/feedback`
 
 Akış:
 
@@ -120,7 +162,7 @@ Fallback:
 
 Endpoint:
 
-- `POST /sport/describe`
+- `POST /v1/sport`
 
 Akış:
 
@@ -158,20 +200,20 @@ provider'lar için ayrıca adapter implementasyonu gerekir.
 - `falai`, `fal`, `fal.ai` -> fal.ai TTS
 - `gemini`, `google` -> Gemini TTS
 
-Başarısızlıkta `/tts` `503` döner ve metni response içinde korur; app kendi TTS fallback'ini
-kullanabilir.
+Başarısızlıkta `/v1/speech/synthesize` `503` döner ve metni response içinde korur; app kendi
+TTS fallback'ini kullanabilir.
 
 ### STT
 
 `stt.py`, fal.ai endpoint'ine audio data URI gönderir ve response içinden transcript'i toleranslı
-şekilde bulur. Bu yol hem `/stt` endpoint'inde hem `/voice/ask` içinde transcript yoksa fallback
-olarak kullanılır.
+şekilde bulur. Bu yol hem `/v1/speech/transcribe` endpoint'inde hem `/v1/voice` içinde transcript
+yoksa fallback olarak kullanılır.
 
 ## Veri Saklama ve Gizlilik
 
 - API key'ler `.env` içindedir; commit edilmez.
 - Servis upload edilen görsel/ses dosyalarını kalıcı olarak saklamaz.
-- `/buddy/analyze-video` geçici dosyaları `tempfile.TemporaryDirectory()` altında oluşturur ve işlem
+- `/dev/buddy-video` geçici dosyaları `tempfile.TemporaryDirectory()` altında oluşturur ve işlem
 sonunda silinir.
 - `output/` ve `runtime/` `.gitignore` kapsamındadır.
 
