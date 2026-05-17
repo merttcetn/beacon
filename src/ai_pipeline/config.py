@@ -30,12 +30,16 @@ class Settings(BaseSettings):
     pattern_c_llm_provider: str = "gemini"  # Spor
     pattern_d_llm_provider: str = "gemini"  # Voice Q&A
     seed_data_llm_provider: str = "gemini"  # n8n/seed görsel analizi
+    orchestrator_llm_provider: str = "gemini"  # niyet sınıflandırma + ticket özet
 
     pattern_a_llm_model: str = "gemini-3.1-pro-preview"  # Buddy — kalite öncelik
     pattern_b_llm_model: str = "gemini-3.1-pro-preview"  # Feedback — doğruluk kritik
     pattern_c_llm_model: str = "gemini-3.1-pro-preview"  # Spor — detaylı anlatım
     pattern_d_llm_model: str = "gemini-3.1-pro-preview"  # Voice Q&A — kalite öncelik
     seed_data_llm_model: str = "gemini-3.1-flash-lite"  # Batch/seed — maliyet/latency dengesi
+    orchestrator_llm_model: str = "gemini-3.1-flash-lite"  # hızlı, deterministik routing
+    orchestrator_temperature: float = 0.0  # sınıflandırma → sıfır sıcaklık
+    orchestrator_min_confidence: float = 0.6  # altı: geri-dönüşsüz aksiyon yerine netleştir
 
     # Eski env adlarıyla uyumluluk: GEMINI_PATTERN_*_MODEL hâlâ çalışır.
     gemini_pattern_a_model: str = "gemini-3.1-pro-preview"  # Buddy — kalite öncelik
@@ -100,6 +104,7 @@ class Settings(BaseSettings):
             "pattern_d": self.pattern_d_llm_provider,
             "voice": self.pattern_d_llm_provider,
             "seed_data": self.seed_data_llm_provider,
+            "orchestrator": self.orchestrator_llm_provider,
         }
         return providers.get(feature, self.llm_default_provider).strip().lower()
 
@@ -119,6 +124,7 @@ class Settings(BaseSettings):
             "pattern_d": self.pattern_d_llm_model or self.gemini_pattern_d_model,
             "voice": self.pattern_d_llm_model or self.gemini_pattern_d_model,
             "seed_data": self.seed_data_llm_model,
+            "orchestrator": self.orchestrator_llm_model,
         }
         return models[feature]
 
