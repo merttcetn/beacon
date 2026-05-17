@@ -197,27 +197,61 @@
 
 <script>
 const lastSpeak = {};
-let currentAudio = null;
 
-// ---- ortak yardımcılar ----
+// ---- TTS kuyruğu (spec §4.2) ----
+// Konuşmalar birbirini KESMEZ: proaktif buddy konuşması, çalan ses bitene kadar bekler.
+// Beklerken yalnızca EN YENİ proaktif tutulur (eski guidance stale olur, atılır).
+// `critical` anında keser; voice (kullanıcı tetikli) cevabı proaktifi keser.
+const ttsMgr = (function () {
+  let audio = null, curPrio = null, occupied = false, pending = null;
 
-// Metni server-side TTS ile seslendirir; öncekini keser. Geçen süreyi (ms) döndürür.
-async function speak(text) {
-  if (!text || !text.trim()) return null;
-  const t0 = performance.now();
-  const fd = new FormData();
-  fd.append("text", text);
-  const r = await fetch("/v1/speech/synthesize", { method: "POST", body: fd });
-  if (!r.ok) return null;
-  if (currentAudio) currentAudio.pause();
-  currentAudio = new Audio(URL.createObjectURL(await r.blob()));
-  currentAudio.play().catch(() => {});
-  return Math.round(performance.now() - t0);
-}
+  async function synth(text) {
+    const fd = new FormData();
+    fd.append("text", text);
+    const r = await fetch("/v1/speech/synthesize", { method: "POST", body: fd });
+    if (!r.ok) throw new Error("tts " + r.status);
+    return new Audio(URL.createObjectURL(await r.blob()));
+  }
+  async function run(text, prio) {
+    occupied = true;
+    let a;
+    try { a = await synth(text); }
+    catch { occupied = false; next(); return; }
+    if (audio) audio.pause();
+    audio = a; curPrio = prio;
+    const done = () => {
+      if (audio === a) { audio = null; curPrio = null; occupied = false; next(); }
+    };
+    a.onended = done;
+    a.onerror = done;
+    a.play().catch(done);
+  }
+  function next() {
+    if (pending) { const p = pending; pending = null; run(p.text, p.prio); }
+  }
+  return {
+    // Proaktif buddy_frame: çalan ses bitene kadar bekler (kesmez); critical anında keser.
+    proactive(text, prio) {
+      text = (text || "").trim();
+      if (!text) return;
+      if (prio === "critical") { pending = null; run(text, prio); return; }
+      if (!occupied) { run(text, prio); return; }
+      pending = { text, prio };
+    },
+    // Voice cevabı: kullanıcı tetikledi → proaktifi keser (yalnız critical bölünmez).
+    voice(text) {
+      text = (text || "").trim();
+      if (!text) return;
+      if (occupied && curPrio === "critical") { pending = { text, prio: "voice" }; return; }
+      pending = null;
+      run(text, "voice");
+    },
+  };
+})();
 
-async function playTTS(text) {
+function playTTS(text) {
   if (!text || !text.trim()) { alert("Seslendirilecek metin yok."); return; }
-  speak(text);
+  ttsMgr.voice(text);
 }
 
 const esc = (s) => String(s == null ? "" : s)
@@ -382,7 +416,11 @@ function fillCard(card, data, ms, doTTS) {
     " &nbsp;<details><summary>JSON</summary><pre>" + esc(JSON.stringify(data, null, 2)) + "</pre></details>";
 
   if (data.ui_action) setMode(data.ui_action);
-  if (doTTS && speakText) speak(speakText);
+  if (doTTS && speakText) {
+    // voice cevabı proaktifi kesebilir; buddy_frame konuşması kuyruğa girer, kesmez.
+    if (data.event === "voice") ttsMgr.voice(speakText);
+    else ttsMgr.proactive(speakText, data.priority || "low");
+  }
 }
 
 function cardError(card, msg) {
@@ -502,7 +540,7 @@ async function assistManual() {
       "\n\n— HTTP " + r.status + " · " + Math.round(performance.now() - t0) + " ms";
     lastSpeak.ask = data.speak_text || "";
     document.getElementById("askListen").style.display = lastSpeak.ask ? "inline-block" : "none";
-    if (lastSpeak.ask) speak(lastSpeak.ask);
+    if (lastSpeak.ask) ttsMgr.voice(lastSpeak.ask);
   } catch (e) {
     out.textContent = "HATA: " + e;
   }
@@ -597,7 +635,7 @@ async function tVoice() {
       "\n\n— HTTP " + r.status + " · " + Math.round(performance.now() - t1) + " ms";
     lastSpeak.voice = data.answer_speak_text || "";
     document.getElementById("voiceListen").style.display = lastSpeak.voice ? "inline-block" : "none";
-    if (lastSpeak.voice) speak(lastSpeak.voice);
+    if (lastSpeak.voice) ttsMgr.voice(lastSpeak.voice);
   } catch (e) {
     out.textContent += "HATA: " + e;
   }
