@@ -93,8 +93,10 @@
       <input type="number" id="simInterval" value="5" min="2" style="width:5rem" /></div>
     <div><label><input type="checkbox" id="simTTS" checked /> Sesli oku (TTS)</label></div>
   </div>
-  <label>nearby_tickets — UI'nin gönderdiği çevre ticket'ları (JSON dizi)</label>
-  <textarea id="simNearby" rows="2">[{"issue_type":"pothole","severity":"high","description_tr":"Derin çukur var.","distance_m":18},{"issue_type":"missing_ramp","severity":"medium","description_tr":"Rampa eksik.","distance_m":45}]</textarea>
+  <label>nearby_tickets — gerçek uygulamada UI bunu GPS'e göre DB'den getirir. <b>Boş bırak</b>
+    (= çevrede kayıtlı sorun yok) ya da yalnızca SAHNEYE uygun gerçek ticket gir;
+    alakasız örnek veri kör kullanıcıyı yanıltır.</label>
+  <textarea id="simNearby" rows="2" placeholder='Boş = çevrede kayıtlı sorun yok. Test için örnek: [{"issue_type":"pothole","severity":"high","description_tr":"Derin çukur var.","distance_m":18}]'></textarea>
 
   <div class="modebar" id="modeBar">🚶 Aktif mod: <b>Buddy</b></div>
   <div class="actions">
