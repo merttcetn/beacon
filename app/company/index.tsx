@@ -1,3 +1,4 @@
+import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import {
   Bell,
   Building2,
@@ -14,7 +15,7 @@ import {
   UserRound,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -37,10 +38,13 @@ import {
 } from '@/constants/companyMarketplace';
 import { colors, fontFamily, radius } from '@/theme';
 
+const SNAP_POINTS = ['14%', '52%', '92%'];
+
 export default function CompanyDashboard() {
   const [mode, setMode] = useState<'heat' | 'pin'>('heat');
   const [requestSent, setRequestSent] = useState(false);
   const router = useRouter();
+  const sheetRef = useRef<BottomSheet>(null);
 
   const markers = useMemo<AppMapMarker[]>(
     () =>
@@ -139,118 +143,137 @@ export default function CompanyDashboard() {
           ))}
         </View>
 
-        <View style={styles.briefPanel} pointerEvents="box-none">
-          <View style={styles.briefAccent} />
-          <View style={styles.briefCopy}>
-            <View style={styles.briefKicker}>
-              <MapPin size={12} color={colors.accent.primary} strokeWidth={2.6} />
-              <Text style={styles.briefKickerText}>ÖNE ÇIKAN KÜME</Text>
-            </View>
-            <Text style={styles.briefTitle}>{COMPANY_BRIEF.title}</Text>
-            <Text style={styles.briefDescription} numberOfLines={2}>
-              {COMPANY_BRIEF.description}
-            </Text>
-            <View style={styles.briefChips}>
-              {COMPANY_BRIEF.chips.map((chip) => (
-                <Text key={chip} style={styles.briefChip}>
-                  {chip}
+        <BottomSheet
+          ref={sheetRef}
+          index={1}
+          snapPoints={SNAP_POINTS}
+          enableDynamicSizing={false}
+          enablePanDownToClose={false}
+          backgroundStyle={styles.sheetBg}
+          handleIndicatorStyle={styles.sheetHandleBar}
+          handleStyle={styles.sheetHandle}
+        >
+          <BottomSheetScrollView contentContainerStyle={styles.sheetContent}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={requestSent ? 'Talep gönderildi' : 'Bu kümeyi talep et'}
+              style={({ pressed }) => [
+                styles.cta,
+                requestSent && styles.ctaSuccess,
+                pressed && styles.ctaPressed,
+              ]}
+              onPress={() => setRequestSent(true)}
+            >
+              <View style={styles.ctaIcon}>
+                {requestSent ? (
+                  <CheckCircle2 size={16} color="#fff" strokeWidth={2.5} />
+                ) : (
+                  <Send size={15} color="#fff" strokeWidth={2.5} />
+                )}
+              </View>
+              <View style={styles.ctaCopy}>
+                <Text style={styles.ctaText}>
+                  {requestSent ? 'Talep gönderildi' : 'Bu Kümeyi Talep Et'}
                 </Text>
+                <Text style={styles.ctaSub}>
+                  {requestSent ? 'Bildirim admin kuyruğunda' : '47 sinyal · örnek veri'}
+                </Text>
+              </View>
+              <View style={styles.ctaBadge}>
+                <Text style={styles.ctaBadgeText}>47</Text>
+              </View>
+            </Pressable>
+
+            <View style={styles.briefPanel}>
+              <View style={styles.briefAccent} />
+              <View style={styles.briefCopy}>
+                <View style={styles.briefKicker}>
+                  <MapPin size={12} color={colors.accent.primary} strokeWidth={2.6} />
+                  <Text style={styles.briefKickerText}>ÖNE ÇIKAN KÜME</Text>
+                </View>
+                <Text style={styles.briefTitle}>{COMPANY_BRIEF.title}</Text>
+                <Text style={styles.briefDescription}>
+                  {COMPANY_BRIEF.description}
+                </Text>
+                <View style={styles.briefChips}>
+                  {COMPANY_BRIEF.chips.map((chip) => (
+                    <Text key={chip} style={styles.briefChip}>
+                      {chip}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.scoreBox}>
+                <Text style={styles.scoreValue}>{COMPANY_BRIEF.score}</Text>
+                <Text style={styles.scoreLabel}>SKOR</Text>
+                <Text style={styles.scoreSignal} numberOfLines={2}>
+                  {COMPANY_BRIEF.signal}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.metricRail}>
+              {COMPANY_BRIEF.metrics.map((m) => (
+                <View key={m.label} style={styles.railItem}>
+                  <Text style={styles.railValue}>{m.value}</Text>
+                  <Text style={styles.railLabel}>{m.label}</Text>
+                </View>
               ))}
             </View>
-          </View>
-          <View style={styles.scoreBox}>
-            <Text style={styles.scoreValue}>{COMPANY_BRIEF.score}</Text>
-            <Text style={styles.scoreLabel}>SKOR</Text>
-            <Text style={styles.scoreSignal} numberOfLines={2}>
-              {COMPANY_BRIEF.signal}
-            </Text>
-          </View>
-        </View>
 
-        <View style={styles.metricRail} pointerEvents="box-none">
-          {COMPANY_BRIEF.metrics.map((m) => (
-            <View key={m.label} style={styles.railItem}>
-              <Text style={styles.railValue}>{m.value}</Text>
-              <Text style={styles.railLabel}>{m.label}</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.bottomPanel} pointerEvents="box-none">
-          <View style={styles.panelHeader}>
-            <View style={styles.panelTitleWrap}>
-              <SlidersHorizontal size={14} color={colors.text.primary} strokeWidth={2.4} />
-              <Text style={styles.panelTitle}>Kategori dağılımı</Text>
-            </View>
-            <View style={styles.modeSwitch}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Isı haritası"
-                style={[styles.modeBtn, mode === 'heat' && styles.modeBtnActive]}
-                onPress={() => setMode('heat')}
-              >
-                <Flame size={13} color={mode === 'heat' ? '#fff' : colors.text.secondary} strokeWidth={2.5} />
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Pin görünümü"
-                style={[styles.modeBtn, mode === 'pin' && styles.modeBtnActive]}
-                onPress={() => setMode('pin')}
-              >
-                <Layers size={13} color={mode === 'pin' ? '#fff' : colors.text.secondary} strokeWidth={2.5} />
-              </Pressable>
-            </View>
-          </View>
-
-          {COMPANY_CATEGORIES.map((row) => (
-            <View key={row.label} style={styles.catRow}>
-              <View style={styles.catHead}>
-                <Text style={styles.catLabel}>{row.label}</Text>
-                <Text style={styles.catPct}>{row.pct}%</Text>
+            <View style={styles.categoryPanel}>
+              <View style={styles.panelHeader}>
+                <View style={styles.panelTitleWrap}>
+                  <SlidersHorizontal size={14} color={colors.text.primary} strokeWidth={2.4} />
+                  <Text style={styles.panelTitle}>Kategori dağılımı</Text>
+                </View>
+                <View style={styles.modeSwitch}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Isı haritası"
+                    style={[styles.modeBtn, mode === 'heat' && styles.modeBtnActive]}
+                    onPress={() => setMode('heat')}
+                  >
+                    <Flame
+                      size={13}
+                      color={mode === 'heat' ? '#fff' : colors.text.secondary}
+                      strokeWidth={2.5}
+                    />
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Pin görünümü"
+                    style={[styles.modeBtn, mode === 'pin' && styles.modeBtnActive]}
+                    onPress={() => setMode('pin')}
+                  >
+                    <Layers
+                      size={13}
+                      color={mode === 'pin' ? '#fff' : colors.text.secondary}
+                      strokeWidth={2.5}
+                    />
+                  </Pressable>
+                </View>
               </View>
-              <View style={styles.barTrack}>
-                <View
-                  style={[
-                    styles.barFill,
-                    { width: `${row.pct}%`, backgroundColor: row.tone },
-                  ]}
-                />
-              </View>
-            </View>
-          ))}
-        </View>
 
-        <View style={styles.fabWrap} pointerEvents="box-none">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Bu kümeyi talep et"
-            style={({ pressed }) => [
-              styles.fab,
-              requestSent && styles.fabSuccess,
-              pressed && styles.fabPressed,
-            ]}
-            onPress={() => setRequestSent(true)}
-          >
-            <View style={styles.fabIcon}>
-              {requestSent ? (
-                <CheckCircle2 size={16} color="#fff" strokeWidth={2.5} />
-              ) : (
-                <Send size={15} color="#fff" strokeWidth={2.5} />
-              )}
+              {COMPANY_CATEGORIES.map((row) => (
+                <View key={row.label} style={styles.catRow}>
+                  <View style={styles.catHead}>
+                    <Text style={styles.catLabel}>{row.label}</Text>
+                    <Text style={styles.catPct}>{row.pct}%</Text>
+                  </View>
+                  <View style={styles.barTrack}>
+                    <View
+                      style={[
+                        styles.barFill,
+                        { width: `${row.pct}%`, backgroundColor: row.tone },
+                      ]}
+                    />
+                  </View>
+                </View>
+              ))}
             </View>
-            <View style={styles.fabCopy}>
-              <Text style={styles.fabText}>
-                {requestSent ? 'Talep gönderildi' : 'Bu Kümeyi Talep Et'}
-              </Text>
-              <Text style={styles.fabSub}>
-                {requestSent ? 'Bildirim admin kuyruğunda' : '47 sinyal · örnek veri'}
-              </Text>
-            </View>
-            <View style={styles.fabBadge}>
-              <Text style={styles.fabBadgeText}>47</Text>
-            </View>
-          </Pressable>
-        </View>
+          </BottomSheetScrollView>
+        </BottomSheet>
       </View>
     </View>
   );
@@ -453,23 +476,86 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 
+  sheetBg: {
+    backgroundColor: colors.bg.elevated,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+  },
+  sheetHandle: {
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  sheetHandleBar: {
+    width: 44,
+    height: 4,
+    borderRadius: 99,
+    backgroundColor: colors.border.default,
+  },
+  sheetContent: {
+    paddingHorizontal: 14,
+    paddingBottom: 28,
+    gap: 12,
+  },
+
+  cta: {
+    minHeight: 58,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    backgroundColor: colors.accent.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: colors.accent.primary,
+    shadowOpacity: 0.32,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+  ctaSuccess: {
+    backgroundColor: colors.status.verified,
+    shadowColor: colors.status.verified,
+  },
+  ctaPressed: { transform: [{ scale: 0.99 }] },
+  ctaIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 99,
+    backgroundColor: 'rgba(255,255,255,0.13)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaCopy: { flex: 1 },
+  ctaText: {
+    fontFamily: fontFamily.display,
+    fontSize: 14.5,
+    color: colors.text.inverse,
+  },
+  ctaSub: {
+    fontFamily: fontFamily.body,
+    fontSize: 11.5,
+    color: 'rgba(255,255,255,0.76)',
+    marginTop: 1,
+  },
+  ctaBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 99,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  ctaBadgeText: {
+    fontFamily: fontFamily.monoBold,
+    fontSize: 11,
+    color: '#fff',
+  },
+
   briefPanel: {
-    position: 'absolute',
-    top: 94,
-    left: 12,
-    right: 12,
     minHeight: 126,
-    backgroundColor: PANEL_BG,
+    backgroundColor: colors.bg.primary,
     borderWidth: 1,
-    borderColor: PANEL_BORDER,
+    borderColor: colors.border.divider,
     borderRadius: radius.sm,
     flexDirection: 'row',
     overflow: 'hidden',
-    shadowColor: '#1A1D24',
-    shadowOpacity: 0.2,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 9 },
-    elevation: 4,
   },
   briefAccent: {
     width: 5,
@@ -551,21 +637,17 @@ const styles = StyleSheet.create({
   },
 
   metricRail: {
-    position: 'absolute',
-    top: 228,
-    left: 12,
-    right: 12,
     flexDirection: 'row',
     gap: 8,
   },
   railItem: {
     flex: 1,
     borderRadius: radius.sm,
-    backgroundColor: 'rgba(17,23,31,0.86)',
+    backgroundColor: 'rgba(17,23,31,0.92)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(255,255,255,0.06)',
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   railValue: {
     fontFamily: fontFamily.displayExtra,
@@ -579,21 +661,12 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 
-  bottomPanel: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 92,
-    backgroundColor: PANEL_BG,
+  categoryPanel: {
+    backgroundColor: colors.bg.primary,
     borderWidth: 1,
-    borderColor: PANEL_BORDER,
+    borderColor: colors.border.divider,
     borderRadius: radius.sm,
     padding: 12,
-    shadowColor: '#1A1D24',
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 9 },
-    elevation: 4,
   },
   panelHeader: {
     flexDirection: 'row',
@@ -655,62 +728,5 @@ const styles = StyleSheet.create({
     height: '100%',
     minWidth: 10,
     borderRadius: 99,
-  },
-
-  fabWrap: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 22,
-  },
-  fab: {
-    minHeight: 58,
-    borderRadius: 29,
-    paddingHorizontal: 16,
-    backgroundColor: colors.accent.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    shadowColor: colors.accent.primary,
-    shadowOpacity: 0.44,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
-  },
-  fabSuccess: {
-    backgroundColor: colors.status.verified,
-    shadowColor: colors.status.verified,
-  },
-  fabPressed: { transform: [{ scale: 0.99 }] },
-  fabIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 99,
-    backgroundColor: 'rgba(255,255,255,0.13)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fabCopy: { flex: 1 },
-  fabText: {
-    fontFamily: fontFamily.display,
-    fontSize: 14.5,
-    color: colors.text.inverse,
-  },
-  fabSub: {
-    fontFamily: fontFamily.body,
-    fontSize: 11.5,
-    color: 'rgba(255,255,255,0.76)',
-    marginTop: 1,
-  },
-  fabBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 99,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-  },
-  fabBadgeText: {
-    fontFamily: fontFamily.monoBold,
-    fontSize: 11,
-    color: '#fff',
   },
 });
