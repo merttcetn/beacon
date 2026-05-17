@@ -30,6 +30,7 @@ Ana yetenekler:
 | [`configuration.md`](configuration.md) | `.env` anahtarları, provider/model seçimleri, güvenlik notları |
 | [`development.md`](development.md) | Kurulum, lokal çalıştırma, test, lint, test konsolu ve demo script'leri |
 | [`troubleshooting.md`](troubleshooting.md) | Sık hata durumları ve hızlı çözüm yolları |
+| [`runbook-gemini-429.md`](runbook-gemini-429.md) | Gemini `429` / `limit: 0` quota sorunu — doğrulama kapılı aksiyon planı |
 
 ## Hızlı Başlangıç
 

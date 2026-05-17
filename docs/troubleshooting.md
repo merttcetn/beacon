@@ -42,6 +42,12 @@ GEMINI_TIMEOUT_SECONDS=60
 
 Loglarda `Gemini çağrısı başarısız` mesajlarını incele.
 
+Tekrarlayan `429` / `limit: 0` (`free_tier`) — özellikle aynı `.env`'e rağmen bir makinede
+sorun varken diğerinde yokken — için doğrulama kapılı runbook:
+[`runbook-gemini-429.md`](runbook-gemini-429.md). Servis başlangıçta
+`Gemini API key yüklendi — son 6 hane: …` satırını loglar; yanlış key (örn. shell ortam
+değişkeniyle ezilmiş) bu satırdan hemen anlaşılır.
+
 ## `TTS_PROVIDER=falai` İle `/v1/speech/synthesize` 503 Dönüyor
 
 Olası nedenler:
