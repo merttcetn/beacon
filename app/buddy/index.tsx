@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -23,8 +25,11 @@ import {
   type WalkDuration,
 } from '@/constants/buddyScripts';
 import { useBuddyVoice } from '@/hooks/useBuddyVoice';
+import { hasAiApi } from '@/lib/aiApi';
+import { analyzeBuddyFrame } from '@/lib/buddyVision';
 import type { BuddyCommand } from '@/lib/buddyCommands';
-import { speakTts, stopTts } from '@/lib/tts';
+import { speakTts, stopTts, subscribeTtsState } from '@/lib/tts';
+import type { ScreenContext } from '@/lib/voiceAsk';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily } from '@/theme';
 
@@ -62,6 +67,18 @@ function speak(text: string) {
   void speakTts(text);
 }
 
+function screenContextFor(sceneKind: BuddyScene['kind']): ScreenContext {
+  if (sceneKind === 'walk_active') return 'buddy_mode';
+  if (
+    sceneKind === 'sport_navigating' ||
+    sceneKind === 'sport_equipment' ||
+    sceneKind === 'sport_done'
+  ) {
+    return 'sport_mode';
+  }
+  return 'idle';
+}
+
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
 export default function BuddyMain() {
@@ -80,6 +97,15 @@ export default function BuddyMain() {
   const tickTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const holdProgress = useSharedValue(0);
   const glow = useSharedValue(0.55);
+
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [cameraReady, setCameraReady] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
+  const coordsRef = useRef<{ lat: number; lon: number } | null>(null);
+  const vlmInflightRef = useRef(false);
+  const ttsSpeakingRef = useRef(false);
+  const lastFrameUriRef = useRef<string | null>(null);
+  const scriptedWarningIndexRef = useRef(0);
 
   function cancelHold(silent = false) {
     if (holdTimer.current) {
@@ -144,10 +170,8 @@ export default function BuddyMain() {
   const dispatchCommand = useCallback(
     (cmd: BuddyCommand) => {
       setScene((current) => {
-        if (current.kind === 'mode_select') {
-          if (cmd.kind === 'select_sport') return { kind: 'sport_navigating' };
-          if (cmd.kind === 'select_walk') return { kind: 'walk_duration' };
-        }
+        if (cmd.kind === 'select_sport') return { kind: 'sport_navigating' };
+        if (cmd.kind === 'select_walk') return { kind: 'walk_duration' };
         if (current.kind === 'walk_duration' && cmd.kind === 'walk_duration') {
           return { kind: 'walk_active', duration: cmd.minutes };
         }
@@ -167,16 +191,32 @@ export default function BuddyMain() {
     [stopSession],
   );
 
+  const speakScriptedWalkWarning = useCallback(() => {
+    if (ttsSpeakingRef.current) return;
+    const warnings = BUDDY_SCRIPTS.walkWarnings;
+    const text = warnings[scriptedWarningIndexRef.current % warnings.length];
+    scriptedWarningIndexRef.current += 1;
+    setLastSpoken(text);
+    speak(text);
+  }, []);
+
   const { metering, isSpeaking } = useBuddyVoice({
     sceneKind: scene.kind,
     enabled: voiceEnabled,
     onCommand: dispatchCommand,
     onTranscript: (t) => setLastTranscript(t),
+    onAssistantSpeech: (text) => setLastSpoken(text),
     onPermissionDenied: () => {
       console.warn('[buddy] mikrofon izni reddedildi — debug moduna geçildi');
       setVoiceEnabled(false);
       setDebugMode(true);
     },
+    getVoiceContext: () => ({
+      screenContext: screenContextFor(scene.kind),
+      frameUri: lastFrameUriRef.current,
+      lat: coordsRef.current?.lat,
+      lon: coordsRef.current?.lon,
+    }),
   });
 
   const waveformMode: 'idle' | 'listening' | 'speaking' = isSpeaking
@@ -219,17 +259,98 @@ export default function BuddyMain() {
   }, [scene]);
 
   useEffect(() => {
+    const unsub = subscribeTtsState((s) => {
+      ttsSpeakingRef.current = s;
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
     if (scene.kind !== 'walk_active') return;
-    let i = 0;
+    if (!hasAiApi()) return;
+    let cancelled = false;
+    (async () => {
+      if (!cameraPermission?.granted) {
+        const res = await requestCameraPermission();
+        if (!res.granted || cancelled) return;
+      }
+      try {
+        const loc = await Location.getLastKnownPositionAsync();
+        if (loc && !cancelled) {
+          coordsRef.current = {
+            lat: loc.coords.latitude,
+            lon: loc.coords.longitude,
+          };
+        } else {
+          const perm = await Location.requestForegroundPermissionsAsync();
+          if (perm.granted && !cancelled) {
+            const fresh = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            });
+            if (!cancelled) {
+              coordsRef.current = {
+                lat: fresh.coords.latitude,
+                lon: fresh.coords.longitude,
+              };
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[buddy] konum alınamadı', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [scene, cameraPermission, requestCameraPermission]);
+
+  useEffect(() => {
+    if (scene.kind !== 'walk_active') return;
+    if (!hasAiApi() || (cameraPermission && !cameraPermission.granted)) {
+      const id = setInterval(speakScriptedWalkWarning, 8000);
+      return () => clearInterval(id);
+    }
+    if (!cameraReady) return;
+    if (!cameraPermission?.granted) return;
+
+    const tick = async () => {
+      if (vlmInflightRef.current) return;
+      if (ttsSpeakingRef.current) return;
+      if (!cameraRef.current) return;
+      vlmInflightRef.current = true;
+      try {
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.4,
+          skipProcessing: true,
+          shutterSound: false,
+        });
+        if (!photo?.uri) return;
+        lastFrameUriRef.current = photo.uri;
+        const result = await analyzeBuddyFrame({
+          uri: photo.uri,
+          lat: coordsRef.current?.lat,
+          lon: coordsRef.current?.lon,
+        });
+        const text = result.speak_text.trim();
+        if (text) {
+          setLastSpoken(text);
+          speak(text);
+        } else {
+          speakScriptedWalkWarning();
+        }
+      } catch (err) {
+        console.warn('[buddy] /buddy/analyze hata', err);
+        speakScriptedWalkWarning();
+      } finally {
+        vlmInflightRef.current = false;
+      }
+    };
+
     const id = setInterval(() => {
-      const warnings = BUDDY_SCRIPTS.walkWarnings;
-      const text = warnings[i % warnings.length];
-      i += 1;
-      setLastSpoken(text);
-      speak(text);
-    }, 8000);
+      void tick();
+    }, 5000);
     return () => clearInterval(id);
-  }, [scene]);
+  }, [scene, cameraReady, cameraPermission, speakScriptedWalkWarning]);
 
   useEffect(() => {
     if (scene.kind !== 'sport_navigating') return;
@@ -237,6 +358,12 @@ export default function BuddyMain() {
       setScene({ kind: 'sport_equipment', index: 0 });
     }, 6000);
     return () => clearTimeout(id);
+  }, [scene]);
+
+  useEffect(() => {
+    if (scene.kind !== 'walk_active') {
+      setCameraReady(false);
+    }
   }, [scene]);
 
   useEffect(() => {
@@ -250,7 +377,7 @@ export default function BuddyMain() {
       if (holdTimer.current) clearTimeout(holdTimer.current);
       if (tickTimer.current) clearInterval(tickTimer.current);
     };
-  }, []);
+  }, [glow]);
 
   function replay() {
     if (!lastSpoken) return;
@@ -293,6 +420,15 @@ export default function BuddyMain() {
       edges={['top', 'left', 'right']}
       {...onboardingSwipe.panHandlers}
     >
+      {scene.kind === 'walk_active' && hasAiApi() && cameraPermission?.granted ? (
+        <CameraView
+          ref={cameraRef}
+          style={styles.hiddenCamera}
+          facing="back"
+          onCameraReady={() => setCameraReady(true)}
+        />
+      ) : null}
+
         <View style={styles.statusRow}>
           <Pressable
             onPress={handleStatusChipTap}
@@ -378,7 +514,7 @@ export default function BuddyMain() {
             {lastSpoken || (voiceEnabled ? 'Dinliyorum…' : '...')}
           </Text>
           {debugMode && lastTranscript ? (
-            <Text style={styles.transcriptDebug}>↳ "{lastTranscript}"</Text>
+            <Text style={styles.transcriptDebug}>{`↳ "${lastTranscript}"`}</Text>
           ) : null}
         </View>
 
@@ -445,6 +581,14 @@ export default function BuddyMain() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg.primary },
+  hiddenCamera: {
+    position: 'absolute',
+    top: -1000,
+    left: -1000,
+    width: 1,
+    height: 1,
+    opacity: 0,
+  },
   statusRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 22, paddingTop: 14, paddingBottom: 8,

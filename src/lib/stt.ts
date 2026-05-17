@@ -1,7 +1,4 @@
-import Constants from 'expo-constants';
-import { File } from 'expo-file-system';
-
-const FAL_WIZPER_ENDPOINT = 'https://fal.run/fal-ai/wizper';
+import { AI_API_URL, assertAiApi } from './aiApi';
 
 export const VAD_CONFIG = {
   SPEECH_THRESHOLD_DB: -35,
@@ -11,14 +8,9 @@ export const VAD_CONFIG = {
   POLL_INTERVAL_MS: 100,
 } as const;
 
-interface WizperResponse {
-  text?: string;
-  chunks?: { text: string }[];
-}
-
-function getFalKey() {
-  const extra = Constants.expoConfig?.extra as { FAL_KEY?: string } | undefined;
-  return extra?.FAL_KEY ?? '';
+interface SttResponse {
+  transcript?: string;
+  ok?: boolean;
 }
 
 function inferMimeFromUri(uri: string): string {
@@ -31,38 +23,37 @@ function inferMimeFromUri(uri: string): string {
   return 'audio/mp4';
 }
 
+function inferNameFromUri(uri: string): string {
+  const lower = uri.toLowerCase();
+  if (lower.endsWith('.m4a') || lower.endsWith('.aac')) return 'speech.m4a';
+  if (lower.endsWith('.wav')) return 'speech.wav';
+  if (lower.endsWith('.mp3')) return 'speech.mp3';
+  if (lower.endsWith('.webm')) return 'speech.webm';
+  if (lower.endsWith('.3gp')) return 'speech.3gp';
+  return 'speech.m4a';
+}
+
 export async function transcribeAudio(uri: string): Promise<string> {
-  const falKey = getFalKey();
-  if (!falKey) {
-    throw new Error('FAL_KEY tanımlı değil.');
-  }
+  assertAiApi();
 
-  const file = new File(uri);
-  const base64 = await file.base64();
-  const mime = inferMimeFromUri(uri);
-  const dataUrl = `data:${mime};base64,${base64}`;
+  const form = new FormData();
+  form.append('audio', {
+    uri,
+    name: inferNameFromUri(uri),
+    type: inferMimeFromUri(uri),
+  } as unknown as Blob);
 
-  const response = await fetch(FAL_WIZPER_ENDPOINT, {
+  const response = await fetch(`${AI_API_URL}/stt`, {
     method: 'POST',
-    headers: {
-      Authorization: `Key ${falKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      audio_url: dataUrl,
-      language: 'tr',
-      task: 'transcribe',
-      chunk_level: 'segment',
-      version: '3',
-    }),
+    body: form,
   });
 
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    throw new Error(`Wizper hata verdi (${response.status}): ${body.slice(0, 180)}`);
+    throw new Error(`/stt hata verdi (${response.status}): ${body.slice(0, 180)}`);
   }
 
-  const data = (await response.json()) as WizperResponse;
-  const text = data.text ?? data.chunks?.map((c) => c.text).join(' ') ?? '';
-  return text.trim();
+  const data = (await response.json()) as SttResponse;
+  if (!data.ok) return '';
+  return (data.transcript ?? '').trim();
 }

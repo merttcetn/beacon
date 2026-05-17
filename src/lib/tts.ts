@@ -1,20 +1,11 @@
 import { Audio } from 'expo-av';
-import Constants from 'expo-constants';
-
-const FAL_TTS_ENDPOINT = 'https://fal.run/fal-ai/elevenlabs/tts/multilingual-v2';
-const VOICE = 'Aria';
-
-interface FalTtsResponse {
-  audio?: { url?: string };
-  data?: {
-    audio?: { url?: string };
-  };
-}
+import { File, Paths } from 'expo-file-system';
+import { AI_API_URL, assertAiApi, hasAiApi } from './aiApi';
 
 let currentSound: Audio.Sound | null = null;
 let requestId = 0;
 
-const audioUrlCache = new Map<string, string>();
+const audioFileCache = new Map<string, string>();
 
 type TtsListener = (isSpeaking: boolean) => void;
 const ttsListeners = new Set<TtsListener>();
@@ -32,11 +23,6 @@ export function subscribeTtsState(listener: TtsListener): () => void {
   return () => {
     ttsListeners.delete(listener);
   };
-}
-
-function getFalKey() {
-  const extra = Constants.expoConfig?.extra as { FAL_KEY?: string } | undefined;
-  return extra?.FAL_KEY ?? '';
 }
 
 async function unloadCurrentSound() {
@@ -57,47 +43,63 @@ async function unloadCurrentSound() {
   }
 }
 
-async function fetchAudioUrl(text: string) {
-  const cached = audioUrlCache.get(text);
+function textHash(text: string): string {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) {
+    h = ((h << 5) - h + text.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h).toString(36);
+}
+
+function extensionForContentType(contentType: string | null): string {
+  const normalized = contentType?.split(';')[0]?.trim().toLowerCase();
+  if (normalized === 'audio/mpeg' || normalized === 'audio/mp3') return 'mp3';
+  if (normalized === 'audio/wav' || normalized === 'audio/x-wav') return 'wav';
+  if (normalized === 'audio/mp4' || normalized === 'audio/aac') return 'm4a';
+  if (normalized === 'audio/flac') return 'flac';
+  return 'mp3';
+}
+
+function simulatedSpeechMs(text: string): number {
+  return Math.min(5200, Math.max(1200, text.length * 55));
+}
+
+function finishSimulatedSpeech(activeRequest: number, text: string) {
+  setTimeout(() => {
+    if (activeRequest === requestId) emitTtsState(false);
+  }, simulatedSpeechMs(text));
+}
+
+async function fetchAudioFile(text: string): Promise<string> {
+  const cached = audioFileCache.get(text);
   if (cached) return cached;
 
-  const falKey = getFalKey();
-  if (!falKey) {
-    throw new Error('FAL_KEY tanımlı değil. .env dosyasını ve Expo config extra alanını kontrol et.');
-  }
+  assertAiApi();
 
-  const response = await fetch(FAL_TTS_ENDPOINT, {
+  const form = new FormData();
+  form.append('text', text);
+
+  const response = await fetch(`${AI_API_URL}/tts`, {
     method: 'POST',
-    headers: {
-      Authorization: `Key ${falKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      text,
-      voice: VOICE,
-      language_code: 'tr',
-      stability: 0.55,
-      similarity_boost: 0.75,
-      style: 0.15,
-      speed: 1,
-      apply_text_normalization: 'auto',
-    }),
+    body: form,
   });
 
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    throw new Error(`fal.ai TTS hata verdi (${response.status}): ${body.slice(0, 180)}`);
+    throw new Error(`/tts hata verdi (${response.status}): ${body.slice(0, 180)}`);
   }
 
-  const data = (await response.json()) as FalTtsResponse;
-  const audioUrl = data.audio?.url ?? data.data?.audio?.url;
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  const extension = extensionForContentType(response.headers.get('content-type'));
 
-  if (!audioUrl) {
-    throw new Error('fal.ai TTS yanıtında audio.url yok.');
-  }
+  const file = new File(Paths.cache, `tts-${textHash(text)}.${extension}`);
+  if (file.exists) file.delete();
+  file.create();
+  file.write(bytes);
 
-  audioUrlCache.set(text, audioUrl);
-  return audioUrl;
+  audioFileCache.set(text, file.uri);
+  return file.uri;
 }
 
 export async function stopTts() {
@@ -116,6 +118,12 @@ export async function speakTts(text: string) {
   await unloadCurrentSound();
   emitTtsState(true);
 
+  // MOCK: Backend/TTS yokken demo kilitlenmesin; ekranda telefon konuşması ritmi sürsün.
+  if (!hasAiApi()) {
+    finishSimulatedSpeech(activeRequest, cleanText);
+    return;
+  }
+
   try {
     await Audio.setAudioModeAsync({
       playsInSilentModeIOS: true,
@@ -124,11 +132,11 @@ export async function speakTts(text: string) {
       staysActiveInBackground: false,
     });
 
-    const audioUrl = await fetchAudioUrl(cleanText);
+    const audioUri = await fetchAudioFile(cleanText);
     if (activeRequest !== requestId) return;
 
     const { sound } = await Audio.Sound.createAsync(
-      { uri: audioUrl },
+      { uri: audioUri },
       { shouldPlay: true, volume: 1 },
     );
 
@@ -147,8 +155,8 @@ export async function speakTts(text: string) {
     });
   } catch (error) {
     if (activeRequest === requestId) {
-      console.warn('[tts] fal.ai ElevenLabs TTS oynatılamadı:', error);
-      emitTtsState(false);
+      console.warn('[tts] AI /tts oynatılamadı:', error);
+      finishSimulatedSpeech(activeRequest, cleanText);
     }
   }
 }

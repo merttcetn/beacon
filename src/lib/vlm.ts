@@ -4,7 +4,7 @@ const BuddyModeSchema = z.object({
   immediate_warnings: z.array(z.string()),
   upcoming_known_issues: z.array(z.string()),
   speak_text: z.string(),
-  priority: z.enum(['low', 'medium', 'high']),
+  priority: z.enum(['low', 'medium', 'high', 'critical']),
 });
 
 const FeedbackSchema = z.object({
@@ -42,14 +42,24 @@ const SportSchema = z.object({
   speak_text: z.string(),
 });
 
+const VoiceAnswerSchema = z.object({
+  interpreted_question: z.string(),
+  answer_speak_text: z.string(),
+  requires_camera: z.boolean(),
+  requires_action: z.enum(['none', 'switch_to_buddy', 'switch_to_sport']),
+  confidence: z.number().min(0).max(1),
+});
+
 export type BuddyModeResponse = z.infer<typeof BuddyModeSchema>;
 export type FeedbackResponse = z.infer<typeof FeedbackSchema>;
 export type SportResponse = z.infer<typeof SportSchema>;
+export type VoiceAnswerResponse = z.infer<typeof VoiceAnswerSchema>;
 
 export const vlmSchemas = {
   buddy: BuddyModeSchema,
   feedback: FeedbackSchema,
   sport: SportSchema,
+  voice: VoiceAnswerSchema,
 };
 
 // TODO: VLM çağrı endpoint'i hackathon başında karar verilecek
