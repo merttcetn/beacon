@@ -123,6 +123,9 @@ async def _handle_buddy_frame(
     if frame_bytes is None:
         logger.warning("buddy_frame: frame yok")
         return AssistResponse(event="buddy_frame", intent="buddy_frame")
+    # known_issues kaynağı: orchestrator yolunda UI'nin gönderdiği `nearby_tickets`;
+    # `/v1/buddy` endpoint'inde ise geo.nearby_issues() seed JSON'u. Aynı model alanı,
+    # iki farklı kaynak — buddy_user_prompt ikisini de tolere eder.
     known = [ticket.model_dump() for ticket in nearby]
     analysis = await patterns.analyze_buddy_frame(
         frame_bytes, frame_mime, lat, lon, known, recent_guidance
@@ -161,11 +164,9 @@ async def _handle_voice(
 
     if intent == "ask":
         voice = await patterns.answer_voice(text, screen_context, images, lat, lon)
-        ui_action = (
-            voice.requires_action
-            if voice.requires_action in ("switch_to_buddy", "switch_to_sport")
-            else "none"
-        )
+        # VoiceAnswer.requires_action ("none"/"switch_to_buddy"/"switch_to_sport")
+        # değerleri zaten UiAction alt kümesi — doğrudan eşlenir.
+        ui_action = voice.requires_action
         return AssistResponse(
             event="voice",
             intent=intent,

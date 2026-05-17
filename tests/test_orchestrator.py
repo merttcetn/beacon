@@ -192,3 +192,11 @@ def test_bad_nearby_tickets_json_does_not_crash(monkeypatch) -> None:  # noqa: A
     monkeypatch.setattr(patterns, "analyze_buddy_frame", fake_buddy)
     resp = _run(event="buddy_frame", frame_bytes=b"x", nearby_tickets_json="{bozuk json")
     assert resp.event == "buddy_frame"
+
+
+def test_unknown_event_is_handled_gracefully() -> None:
+    # Geçersiz event değeri — patlamadan unknown'a düşmeli.
+    resp = _run(event="garbage")
+    assert resp.event == "garbage"
+    assert resp.intent == "unknown"
+    assert resp.speak_text

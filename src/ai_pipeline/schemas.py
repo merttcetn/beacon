@@ -151,7 +151,11 @@ class AssistResponse(BaseModel):
     event: str
     intent: str = ""
     speak_text: str = ""
-    priority: Priority = "low"
+    priority: Priority = Field(
+        default="low",
+        description="TTS kuyruğu önceliği. Dinamik (high/critical) yalnız buddy_frame'de; "
+        "sesli yanıtlarda low (report_issue: medium).",
+    )
     ui_action: UiAction = "none"
     ticket: Ticket | None = None
     data: dict | None = Field(
