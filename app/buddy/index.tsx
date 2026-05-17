@@ -33,8 +33,8 @@ import {
 import {
   BUDDY_CACHE_DELAY_MS,
   BUDDY_FRAME_CACHE,
-  USE_CACHE,
 } from '@/constants/buddyFrameCache';
+import { useDebugStore } from '@/stores/debugStore';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily } from '@/theme';
 
@@ -69,6 +69,9 @@ export default function BuddyMain() {
   const quickStartRequested = Array.isArray(quickStartParam)
     ? quickStartParam.includes('1')
     : quickStartParam === '1';
+
+  // Snapshot at mount — toggling vlmBypass while Buddy is open has no effect.
+  const [vlmBypass] = useState(() => useDebugStore.getState().vlmBypass);
 
   const [lastSpoken, setLastSpoken] = useState<string>('');
   const [debugMode, setDebugMode] = useState(false);
@@ -359,7 +362,7 @@ export default function BuddyMain() {
 
   // "Sesle başla" girişine özel: ilk hızlı kareyi doğrudan /v1/buddy'ye gönder.
   useEffect(() => {
-    if (USE_CACHE) {
+    if (vlmBypass) {
       // MOCK: Demo cache modunda canlı VLM çağrısı yok.
       if (quickStartRequested && !quickStartComplete) setQuickStartComplete(true);
       return;
@@ -435,13 +438,15 @@ export default function BuddyMain() {
     isBuddyActive,
     quickStartRequested,
     speakBuddyGuidance,
+    vlmBypass,
+    quickStartComplete,
   ]);
 
   // test.html canonical akışı: kamera hazır olur olmaz, sonra her
   // ANALYZE_INTERVAL_MS'de tek kare → /v1/assist event=buddy_frame.
   // Voice turn veya TTS aktifken atla.
   useEffect(() => {
-    if (USE_CACHE) return; // MOCK: Demo cache modunda canlı tick yok.
+    if (vlmBypass) return; // MOCK: Demo cache modunda canlı tick yok.
     if (!isBuddyActive) return;
     if (!quickStartComplete) return;
     if (!hasAiApi()) return;
@@ -502,13 +507,13 @@ export default function BuddyMain() {
       buddyFrameAbortRef.current = null;
       vlmInflightRef.current = false;
     };
-  }, [cameraReady, cameraPermission, isBuddyActive, quickStartComplete, speakBuddyGuidance]);
+  }, [cameraReady, cameraPermission, isBuddyActive, quickStartComplete, speakBuddyGuidance, vlmBypass]);
 
-  // MOCK: USE_CACHE açıkken canlı /v1/assist yerine 13 kayıtlı buddy_frame
+  // MOCK: vlmBypass açıkken canlı /v1/assist yerine 13 kayıtlı buddy_frame
   // olayını sırayla oynat. Her olayda speakTtsWithStartCallback, audio çalmaya
   // başladığı microtask'ta setLastSpoken'i tetikler -> yazı ile ses aynı anda.
   useEffect(() => {
-    if (!USE_CACHE) return;
+    if (!vlmBypass) return;
     if (!isBuddyActive) return;
     if (!quickStartComplete) return;
 
@@ -547,7 +552,7 @@ export default function BuddyMain() {
     return () => {
       cancelled = true;
     };
-  }, [isBuddyActive, quickStartComplete]);
+  }, [isBuddyActive, quickStartComplete, vlmBypass]);
 
   useEffect(() => {
     glow.value = withRepeat(

@@ -2,11 +2,13 @@ import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import {
   CheckCircle2,
   ChevronLeft,
+  Database,
   FileText,
   Flame,
   Layers,
   Send,
   UserRound,
+  Zap,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
@@ -19,6 +21,7 @@ import {
   STATUS_TO_HEX,
 } from '@/constants/companyPins';
 import { COMPANY_BRIEF } from '@/constants/companyMarketplace';
+import { useDebugStore } from '@/stores/debugStore';
 import { colors, fontFamily, radius } from '@/theme';
 
 const SNAP_POINTS = ['12%', '40%'];
@@ -26,6 +29,8 @@ const SNAP_POINTS = ['12%', '40%'];
 export default function CompanyDashboard() {
   const [mode, setMode] = useState<'heat' | 'pin'>('heat');
   const [requestSent, setRequestSent] = useState(false);
+  const vlmBypass = useDebugStore((s) => s.vlmBypass);
+  const toggleVlmBypass = useDebugStore((s) => s.toggleVlmBypass);
   const router = useRouter();
   const sheetRef = useRef<BottomSheet>(null);
 
@@ -57,6 +62,26 @@ export default function CompanyDashboard() {
           <Text style={styles.headerTitle}>Pano</Text>
 
           <View style={styles.headerNav}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                vlmBypass
+                  ? 'Buddy önbelleği açık, kapatmak için bas'
+                  : 'Buddy önbelleği kapalı, açmak için bas'
+              }
+              onPress={toggleVlmBypass}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                !vlmBypass && styles.iconBtnAlert,
+                pressed && styles.pressed,
+              ]}
+            >
+              {vlmBypass ? (
+                <Database size={16} color={colors.text.primary} strokeWidth={2.3} />
+              ) : (
+                <Zap size={16} color="#fff" strokeWidth={2.3} />
+              )}
+            </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Talepler"
@@ -220,6 +245,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border.divider,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  iconBtnAlert: {
+    backgroundColor: colors.status.partial,
+    borderColor: colors.status.partial,
   },
 
   mapArea: { flex: 1, position: 'relative', overflow: 'hidden' },

@@ -1,8 +1,7 @@
 // MOCK: Demo için sabit buddy_frame yanıtları. Backend gerçek bir oturumda
 // üretmişti; sunum sırasında VLM gecikmesinden bağımsız, deterministic bir
 // akış istediğimiz için cache'liyoruz. Sunum sonrası temizlenecek.
-
-export const USE_CACHE = true;
+// On/off kontrolü için useDebugStore.vlmBypass kullanılır.
 
 // Her TTS bittikten sonra sıradaki olayı tetiklemeden önceki sessizlik.
 export const BUDDY_CACHE_DELAY_MS = 3000;
