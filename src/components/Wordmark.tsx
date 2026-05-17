@@ -1,6 +1,8 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { colors, fontFamily } from '@/theme';
+
+const BEACON_LOGO = require('@/../assets/images/beacon_logo.png');
 
 interface Props {
   step?: string;
@@ -10,9 +12,16 @@ interface Props {
 export function Wordmark({ step, size = 22 }: Props) {
   const brandSize = Math.round(size * 0.78);
   const gap = Math.round(size * 0.42);
+  const logoHeight = brandSize;
+  const logoWidth = Math.round(logoHeight * (838 / 1410));
   return (
     <View style={[styles.row, { gap }]}>
-      <BeaconMark size={size} />
+      <Image
+        source={BEACON_LOGO}
+        style={{ width: logoWidth, height: logoHeight }}
+        resizeMode="contain"
+        accessibilityIgnoresInvertColors
+      />
       <Text style={[styles.brand, { fontSize: brandSize }]}>Beacon</Text>
       {step ? <Text style={styles.step}>{step}</Text> : null}
     </View>
