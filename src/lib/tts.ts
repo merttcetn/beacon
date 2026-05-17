@@ -37,6 +37,25 @@ export function subscribeTtsState(listener: TtsListener): () => void {
   };
 }
 
+export function waitForTtsIdle(): Promise<void> {
+  if (!ttsIsSpeaking) return Promise.resolve();
+  return new Promise((resolve) => {
+    let unsubscribe: (() => void) | null = null;
+    let shouldUnsubscribe = false;
+    unsubscribe = subscribeTtsState((isSpeaking) => {
+      if (!isSpeaking) {
+        if (unsubscribe) {
+          unsubscribe();
+        } else {
+          shouldUnsubscribe = true;
+        }
+        resolve();
+      }
+    });
+    if (shouldUnsubscribe) unsubscribe();
+  });
+}
+
 async function unloadCurrentSound() {
   const sound = currentSound;
   currentSound = null;
@@ -81,20 +100,24 @@ async function fetchAudioFile(text: string): Promise<string> {
   const form = new FormData();
   form.append('text', text);
 
-  const response = await fetch(`${AI_API_URL}/tts`, {
+  const response = await fetch(`${AI_API_URL}/v1/speech/synthesize`, {
     method: 'POST',
     body: form,
   });
 
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    throw new Error(`/tts hata verdi (${response.status}): ${body.slice(0, 180)}`);
+    throw new Error(
+      `/v1/speech/synthesize hata verdi (${response.status}): ${body.slice(0, 180)}`,
+    );
   }
 
   const contentType = response.headers.get('content-type') ?? '';
   if (contentType.toLowerCase().includes('application/json')) {
     const payload = await response.json().catch(() => null);
-    throw new Error(`/tts unavailable: ${JSON.stringify(payload).slice(0, 180)}`);
+    throw new Error(
+      `/v1/speech/synthesize unavailable: ${JSON.stringify(payload).slice(0, 180)}`,
+    );
   }
 
   const buffer = await response.arrayBuffer();
@@ -152,7 +175,7 @@ export async function speakTts(text: string) {
     });
   } catch (error) {
     if (activeRequest === requestId) {
-      console.warn('[tts] /tts oynatılamadı, sessiz kalınıyor:', error);
+      console.warn('[tts] /v1/speech/synthesize oynatılamadı, sessiz kalınıyor:', error);
       emitTtsState(false);
     }
   }

@@ -6,9 +6,17 @@ import {
   useAudioRecorderState,
 } from 'expo-audio';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { speakTts, subscribeTtsState } from '@/lib/tts';
-import { transcribeAudio, VAD_CONFIG } from '@/lib/stt';
-import { askVoice } from '@/lib/voiceAsk';
+import { speakTts, subscribeTtsState, waitForTtsIdle } from '@/lib/tts';
+import { assist, type NearbyTicket, type ScreenContext } from '@/lib/assist';
+import type { AssistResponse } from '@/lib/vlm';
+
+export const VAD_CONFIG = {
+  SPEECH_THRESHOLD_DB: -30,
+  SPEECH_START_MS: 350,
+  SILENCE_END_MS: 1200,
+  MAX_UTTERANCE_MS: 5000,
+  POLL_INTERVAL_MS: 100,
+} as const;
 
 type VoiceState = 'idle' | 'speaking';
 
@@ -16,23 +24,29 @@ export interface VoiceContext {
   frameUri?: string | null;
   lat?: number | null;
   lon?: number | null;
+  screenContext?: ScreenContext;
+  nearbyTickets?: NearbyTicket[] | null;
 }
 
 interface UseBuddyVoiceArgs {
   enabled: boolean;
-  onTranscript?: (text: string) => void;
   onListeningChange?: (listening: boolean) => void;
   onPermissionDenied?: () => void;
   onAssistantSpeech?: (text: string) => void;
+  onAssistResult?: (result: AssistResponse) => void;
+  onSpeechStart?: () => void;
+  onVoiceFlowChange?: (active: boolean) => void;
   getVoiceContext?: () => VoiceContext | Promise<VoiceContext>;
 }
 
 export function useBuddyVoice({
   enabled,
-  onTranscript,
   onListeningChange,
   onPermissionDenied,
   onAssistantSpeech,
+  onAssistResult,
+  onSpeechStart,
+  onVoiceFlowChange,
   getVoiceContext,
 }: UseBuddyVoiceArgs) {
   const recorder = useAudioRecorder({
@@ -91,6 +105,7 @@ export function useBuddyVoice({
       if (!clean) return;
       onAssistantSpeech?.(clean);
       await speakTts(clean);
+      await waitForTtsIdle();
     },
     [onAssistantSpeech],
   );
@@ -103,33 +118,24 @@ export function useBuddyVoice({
     try {
       await recorder.stop();
       const uri = recorder.uri;
-      if (!uri) {
-        return;
-      }
-      let transcript = '';
-      try {
-        transcript = await transcribeAudio(uri);
-      } catch (err) {
-        console.warn('[voice] /stt fail', err);
-      }
-      if (!transcript) return;
-
-      onTranscript?.(transcript);
-
+      if (!uri) return;
       if (!getVoiceContext) return;
       try {
         const ctx = await getVoiceContext();
-        const answer = await askVoice({
-          transcript,
-          screenContext: 'buddy_mode',
+        const result = await assist({
+          event: 'voice',
+          audioUri: uri,
+          screenContext: ctx.screenContext ?? 'buddy_mode',
           frameUri: ctx.frameUri,
           lat: ctx.lat,
           lon: ctx.lon,
+          nearbyTickets: ctx.nearbyTickets,
         });
-        const reply = answer.answer_speak_text.trim();
+        onAssistResult?.(result);
+        const reply = result.speak_text.trim();
         if (reply) await speakAssistant(reply);
       } catch (err) {
-        console.warn('[voice] /voice/ask fail', err);
+        console.warn('[voice] /v1/assist voice fail', err);
       }
     } catch (err) {
       console.warn('[voice] utterance handling failed', err);
@@ -139,6 +145,7 @@ export function useBuddyVoice({
       aboveThresholdMs.current = 0;
       silenceMs.current = 0;
       segmentMs.current = 0;
+      onVoiceFlowChange?.(false);
       if (enabledRef.current) {
         setTimeout(() => {
           void startRecording();
@@ -147,11 +154,12 @@ export function useBuddyVoice({
     }
   }, [
     recorder,
-    onTranscript,
     onListeningChange,
     startRecording,
     getVoiceContext,
     speakAssistant,
+    onAssistResult,
+    onVoiceFlowChange,
   ]);
 
   useEffect(() => {
@@ -199,6 +207,8 @@ export function useBuddyVoice({
           voiceState.current = 'speaking';
           segmentMs.current = aboveThresholdMs.current;
           silenceMs.current = 0;
+          onVoiceFlowChange?.(true);
+          onSpeechStart?.();
         }
       } else {
         aboveThresholdMs.current = 0;
@@ -219,7 +229,14 @@ export function useBuddyVoice({
     ) {
       void handleUtterance();
     }
-  }, [enabled, recorderState.isRecording, recorderState.metering, handleUtterance]);
+  }, [
+    enabled,
+    recorderState.isRecording,
+    recorderState.metering,
+    handleUtterance,
+    onSpeechStart,
+    onVoiceFlowChange,
+  ]);
 
   return { listening, metering: recorderState.metering ?? null, isSpeaking };
 }

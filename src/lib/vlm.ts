@@ -50,14 +50,58 @@ const VoiceAnswerSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 
+const IssueTypeSchema = z.enum([
+  'pothole',
+  'missing_ramp',
+  'missing_tactile_paving',
+  'obstacle',
+  'uneven_surface',
+  'water_pooling',
+  'narrow_passage',
+  'damaged_equipment',
+  'other',
+]);
+
+const SeveritySchema = z.enum(['low', 'medium', 'high']);
+const AffectedUserSchema = z.enum([
+  'wheelchair',
+  'visually_impaired',
+  'stroller',
+  'elderly',
+]);
+
+const TicketSchema = z.object({
+  issue_type: IssueTypeSchema,
+  severity: SeveritySchema,
+  affected_users: z.array(AffectedUserSchema),
+  description_tr: z.string(),
+  confidence: z.number().min(0).max(1),
+  lat: z.number().nullable().optional(),
+  lon: z.number().nullable().optional(),
+  source: z.string(),
+});
+
+const AssistResponseSchema = z.object({
+  event: z.string(),
+  intent: z.string(),
+  speak_text: z.string(),
+  priority: z.enum(['low', 'medium', 'high', 'critical']),
+  ui_action: z.enum(['none', 'open_ticket', 'switch_to_buddy', 'switch_to_sport']),
+  ticket: TicketSchema.nullable().optional(),
+  data: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+
 export type BuddyModeResponse = z.infer<typeof BuddyModeSchema>;
 export type FeedbackResponse = z.infer<typeof FeedbackSchema>;
 export type SportResponse = z.infer<typeof SportSchema>;
 export type VoiceAnswerResponse = z.infer<typeof VoiceAnswerSchema>;
+export type AssistResponse = z.infer<typeof AssistResponseSchema>;
+export type AssistTicket = z.infer<typeof TicketSchema>;
 
 export const vlmSchemas = {
   buddy: BuddyModeSchema,
   feedback: FeedbackSchema,
   sport: SportSchema,
   voice: VoiceAnswerSchema,
+  assist: AssistResponseSchema,
 };

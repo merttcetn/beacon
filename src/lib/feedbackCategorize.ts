@@ -19,7 +19,7 @@ export async function categorizeFeedback(
     } as unknown as Blob);
   });
 
-  const res = await fetch(`${AI_API_URL}/feedback/categorize`, {
+  const res = await fetch(`${AI_API_URL}/v1/feedback`, {
     method: 'POST',
     body: form,
   });
@@ -27,7 +27,7 @@ export async function categorizeFeedback(
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(
-      `/feedback/categorize hata verdi (${res.status}): ${body.slice(0, 180)}`,
+      `/v1/feedback hata verdi (${res.status}): ${body.slice(0, 180)}`,
     );
   }
 

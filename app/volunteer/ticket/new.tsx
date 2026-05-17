@@ -101,7 +101,7 @@ export default function NewTicket() {
   const lon = params.lon ? Number(params.lon) : 32.7559;
   const photoUri = params.photoUri;
 
-  // AI tespit gelene kadar boş başlat. /feedback/categorize sonra doldurur.
+  // AI tespit gelene kadar boş başlat. /v1/feedback sonra doldurur.
   const [category, setCategory] = useState<IssueType>('other');
   const [severity, setSeverity] = useState<Severity>('medium');
   const [affected, setAffected] = useState<Set<AffectedUser>>(() => new Set());
@@ -132,7 +132,7 @@ export default function NewTicket() {
           setAiConfidence(issue.confidence);
         }
       } catch (err) {
-        console.warn('[ticket] /feedback/categorize fail', err);
+        console.warn('[ticket] /v1/feedback fail', err);
       } finally {
         if (!cancelled) setAiCategorizing(false);
       }

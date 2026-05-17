@@ -18,17 +18,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
 import { PulseDot } from '@/components/PulseDot';
 import { Waveform } from '@/components/Waveform';
-import { BUDDY_INTRO_TR } from '@/constants/buddyScripts';
 import { useBuddyVoice } from '@/hooks/useBuddyVoice';
 import { hasAiApi } from '@/lib/aiApi';
-import { analyzeBuddyFrame } from '@/lib/buddyVision';
-import { speakTts, stopTts, subscribeTtsState } from '@/lib/tts';
+import { assist } from '@/lib/assist';
+import { speakTts, stopTts, subscribeTtsState, waitForTtsIdle } from '@/lib/tts';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily } from '@/theme';
 
 const HOLD_DURATION_MS = 1000;
 const TICK_INTERVAL_MS = 125;
-const ANALYZE_INTERVAL_MS = 3000;
+const ANALYZE_INTERVAL_MS = 5000;
+const RECENT_GUIDANCE_MAX = 3;
 const TICK_PATTERN: Haptics.ImpactFeedbackStyle[] = [
   Haptics.ImpactFeedbackStyle.Rigid,
   Haptics.ImpactFeedbackStyle.Rigid,
@@ -57,7 +57,6 @@ export default function BuddyMain() {
 
   const [lastSpoken, setLastSpoken] = useState<string>('');
   const [debugMode, setDebugMode] = useState(false);
-  const [lastTranscript, setLastTranscript] = useState<string>('');
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const debugTapTimes = useRef<number[]>([]);
 
@@ -72,7 +71,9 @@ export default function BuddyMain() {
   const coordsRef = useRef<{ lat: number; lon: number } | null>(null);
   const vlmInflightRef = useRef(false);
   const ttsSpeakingRef = useRef(false);
+  const voiceFlowActiveRef = useRef(false);
   const lastFrameUriRef = useRef<string | null>(null);
+  const recentGuidanceRef = useRef<string[]>([]);
 
   function cancelHold(silent = false) {
     if (holdTimer.current) {
@@ -136,8 +137,28 @@ export default function BuddyMain() {
 
   const { metering, isSpeaking } = useBuddyVoice({
     enabled: voiceEnabled,
-    onTranscript: (t) => setLastTranscript(t),
-    onAssistantSpeech: (text) => setLastSpoken(text),
+    onSpeechStart: () => {
+      // Kullanıcı eşik üstü konuşmaya başladı — çalan TTS varsa kes, voice turn
+      // sona erene kadar buddy_frame tick'i atla.
+      voiceFlowActiveRef.current = true;
+      void stopTts();
+    },
+    onVoiceFlowChange: (active) => {
+      voiceFlowActiveRef.current = active;
+    },
+    onAssistantSpeech: (text) => {
+      setLastSpoken(text);
+      const next = [...recentGuidanceRef.current, text];
+      recentGuidanceRef.current = next.slice(-RECENT_GUIDANCE_MAX);
+    },
+    onAssistResult: (result) => {
+      if (result.ui_action === 'open_ticket' && result.ticket) {
+        // TODO: ticket payload'unu n8n webhook'una ilet (sesli ticket akışı).
+        console.warn('[buddy] open_ticket (n8n iletimi henüz yapılmadı):', result.ticket);
+      } else if (result.ui_action === 'switch_to_sport') {
+        console.warn('[buddy] switch_to_sport istendi — spor modu UI henüz yok');
+      }
+    },
     onPermissionDenied: () => {
       console.warn('[buddy] mikrofon izni reddedildi — debug moduna geçildi');
       setVoiceEnabled(false);
@@ -147,6 +168,7 @@ export default function BuddyMain() {
       frameUri: lastFrameUriRef.current,
       lat: coordsRef.current?.lat,
       lon: coordsRef.current?.lon,
+      screenContext: 'buddy_mode',
     }),
   });
 
@@ -168,12 +190,6 @@ export default function BuddyMain() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
   }
-
-  // Mount: tek seferlik karşılama.
-  useEffect(() => {
-    setLastSpoken(BUDDY_INTRO_TR);
-    speak(BUDDY_INTRO_TR);
-  }, []);
 
   useEffect(() => {
     const unsub = subscribeTtsState((s) => {
@@ -221,7 +237,18 @@ export default function BuddyMain() {
     };
   }, [cameraPermission, requestCameraPermission]);
 
-  // Her 3 sn'de bir /buddy/analyze.
+  const speakBuddyGuidance = useCallback(async (text: string) => {
+    const clean = text.trim();
+    if (!clean) return;
+    setLastSpoken(clean);
+    const next = [...recentGuidanceRef.current, clean];
+    recentGuidanceRef.current = next.slice(-RECENT_GUIDANCE_MAX);
+    await speakTts(clean);
+    await waitForTtsIdle();
+  }, []);
+
+  // test.html canonical akışı: her ANALYZE_INTERVAL_MS'de tek kare → /v1/assist
+  // event=buddy_frame. Voice turn veya TTS aktifken atla.
   useEffect(() => {
     if (!hasAiApi()) return;
     if (!cameraPermission?.granted) return;
@@ -230,6 +257,7 @@ export default function BuddyMain() {
     const tick = async () => {
       if (vlmInflightRef.current) return;
       if (ttsSpeakingRef.current) return;
+      if (voiceFlowActiveRef.current) return;
       if (!cameraRef.current) return;
       vlmInflightRef.current = true;
       try {
@@ -240,18 +268,21 @@ export default function BuddyMain() {
         });
         if (!photo?.uri) return;
         lastFrameUriRef.current = photo.uri;
-        const result = await analyzeBuddyFrame({
-          uri: photo.uri,
+        const recentGuidance = recentGuidanceRef.current.join('\n');
+        const result = await assist({
+          event: 'buddy_frame',
+          frameUri: photo.uri,
+          screenContext: 'buddy_mode',
           lat: coordsRef.current?.lat,
           lon: coordsRef.current?.lon,
+          recentGuidance,
         });
         const text = result.speak_text.trim();
-        if (text) {
-          setLastSpoken(text);
-          speak(text);
+        if (text && !voiceFlowActiveRef.current) {
+          await speakBuddyGuidance(text);
         }
       } catch (err) {
-        console.warn('[buddy] /buddy/analyze hata', err);
+        console.warn('[buddy] /v1/assist buddy_frame hata', err);
       } finally {
         vlmInflightRef.current = false;
       }
@@ -261,7 +292,7 @@ export default function BuddyMain() {
       void tick();
     }, ANALYZE_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [cameraReady, cameraPermission]);
+  }, [cameraReady, cameraPermission, speakBuddyGuidance]);
 
   useEffect(() => {
     glow.value = withRepeat(
@@ -388,9 +419,6 @@ export default function BuddyMain() {
           <Text style={styles.ttsText}>
             {lastSpoken || (voiceEnabled ? 'Dinliyorum…' : '...')}
           </Text>
-          {debugMode && lastTranscript ? (
-            <Text style={styles.transcriptDebug}>{`↳ "${lastTranscript}"`}</Text>
-          ) : null}
         </View>
 
         <View style={styles.ovalFooter} pointerEvents="box-none">
@@ -495,10 +523,6 @@ const styles = StyleSheet.create({
   ttsText: {
     fontFamily: fontFamily.display, fontSize: 22, lineHeight: 30,
     color: '#F4F1EB', letterSpacing: -0.25,
-  },
-  transcriptDebug: {
-    fontFamily: fontFamily.mono, fontSize: 11, marginTop: 10,
-    color: 'rgba(255,179,119,0.85)', letterSpacing: 0.2,
   },
   ovalFooter: {
     position: 'absolute', bottom: 18, left: 20, right: 20,
