@@ -13,11 +13,12 @@ from fastapi import FastAPI, File, Form, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from ai_pipeline import patterns
+from ai_pipeline import orchestrator, patterns
 from ai_pipeline.config import settings
 from ai_pipeline.frames import extract_frames
 from ai_pipeline.geo import nearby_issues
 from ai_pipeline.schemas import (
+    AssistResponse,
     BuddyAnalysis,
     FeedbackResult,
     SportDescription,
@@ -61,6 +62,45 @@ async def health() -> dict[str, str]:
 async def test_page() -> FileResponse:
     """Tarayıcıdan elle test için basit konsol sayfası (dev aracı)."""
     return FileResponse(_TEST_PAGE)
+
+
+@app.post("/v1/assist", response_model=AssistResponse)
+async def assist(
+    event: Annotated[str, Form(description="voice | buddy_frame")],
+    transcript: Annotated[str | None, Form(description="Sesli ifade (yoksa audio)")] = None,
+    audio: Annotated[UploadFile | None, File(description="Ses — transcript yoksa STT")] = None,
+    frame: Annotated[UploadFile | None, File(description="O anki kamera karesi")] = None,
+    screen_context: Annotated[str, Form()] = "idle",
+    lat: Annotated[float | None, Form()] = None,
+    lon: Annotated[float | None, Form()] = None,
+    recent_guidance: Annotated[str | None, Form()] = None,
+    nearby_tickets: Annotated[
+        str | None, Form(description="Çevredeki kayıtlı ticket'lar — JSON dizi")
+    ] = None,
+) -> AssistResponse:
+    """Orchestrator — UI'nin AI ile tek giriş noktası (spec genişletmesi; bkz. AGENTS.md §4).
+
+    `event=buddy_frame` deterministik (Pattern A). `event=voice` orchestrator LLM ile
+    sınıflandırılıp ilgili pattern'a yönlendirilir. UI her isteğe `nearby_tickets`
+    (kullanıcının çevresindeki kayıtlı ticket'lar) ekler; servis stateless.
+    """
+    frame_bytes = await frame.read() if frame is not None else None
+    frame_mime = (frame.content_type or "image/jpeg") if frame is not None else "image/jpeg"
+    audio_bytes = await audio.read() if audio is not None else None
+    audio_mime = (audio.content_type or "audio/wav") if audio is not None else "audio/wav"
+    return await orchestrator.handle_assist(
+        event=event,
+        transcript=transcript,
+        audio_bytes=audio_bytes,
+        audio_mime=audio_mime,
+        frame_bytes=frame_bytes,
+        frame_mime=frame_mime,
+        screen_context=screen_context,
+        lat=lat,
+        lon=lon,
+        recent_guidance=recent_guidance,
+        nearby_tickets_json=nearby_tickets,
+    )
 
 
 @app.post("/v1/buddy", response_model=BuddyAnalysis)
