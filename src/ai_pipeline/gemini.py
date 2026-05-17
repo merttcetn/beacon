@@ -39,6 +39,7 @@ async def generate_structured(
     user_prompt: str,
     response_schema: type[BaseModel],
     images: list[Image] | None = None,
+    temperature: float | None = None,
 ) -> BaseModel | None:
     """Gemini'ye (sistem + prompt + 0..N görsel) gönderir, structured JSON döner.
 
@@ -57,6 +58,7 @@ async def generate_structured(
         system_instruction=system_instruction,
         response_mime_type="application/json",
         response_schema=response_schema,
+        temperature=temperature,
     )
 
     last_err: Exception | None = None
