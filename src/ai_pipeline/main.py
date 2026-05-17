@@ -13,20 +13,10 @@ from fastapi import FastAPI, File, Form, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
+from ai_pipeline import patterns
 from ai_pipeline.config import settings
 from ai_pipeline.frames import extract_frames
-from ai_pipeline.gemini import generate_structured
 from ai_pipeline.geo import nearby_issues
-from ai_pipeline.prompts import (
-    BUDDY_SYSTEM,
-    FEEDBACK_SYSTEM,
-    SPORT_SYSTEM,
-    VOICE_SYSTEM,
-    buddy_user_prompt,
-    feedback_user_prompt,
-    sport_user_prompt,
-    voice_user_prompt,
-)
 from ai_pipeline.schemas import (
     BuddyAnalysis,
     FeedbackResult,
@@ -43,7 +33,6 @@ logging.basicConfig(
 logger = logging.getLogger("ai_pipeline")
 
 _TEST_PAGE = Path(__file__).resolve().parent.parent.parent / "static" / "test.html"
-_SUPPORTED_LLM_PROVIDERS = {"gemini", "google"}
 
 app = FastAPI(title="ai — Sesli Rehberlik AI Servisi", version="0.1.0")
 
@@ -54,49 +43,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-def _gemini_model_for(feature: str) -> str | None:
-    """Feature için LLM provider/model seçimini config'ten okur.
-
-    Şu an structured VLM client yalnızca Gemini implementasyonuna sahip. Provider alanları
-    future swap için config'te durur; desteklenmeyen provider seçilirse endpoint güvenli
-    fallback'e düşer.
-    """
-    provider = settings.llm_provider_for(feature)
-    if provider not in _SUPPORTED_LLM_PROVIDERS:
-        logger.error("Desteklenmeyen LLM provider: feature=%s provider=%s", feature, provider)
-        return None
-    return settings.llm_model_for(feature)
-
-
-async def analyze_buddy_frame(
-    image_bytes: bytes,
-    image_mime: str,
-    lat: float | None,
-    lon: float | None,
-    known: list[dict],
-    recent_guidance: str | None = None,
-) -> BuddyAnalysis:
-    """Tek bir kareyi Buddy Mode (Pattern A) ile analiz eder; hata → güvenli fallback.
-
-    Hem `/v1/buddy` hem `/dev/buddy-video` bunu kullanır (DRY). `recent_guidance`
-    verilirse (realtime akışta son speak_text'ler) model tekrarı önlemek için kullanır.
-    """
-    model = _gemini_model_for("pattern_a")
-    if model is None:
-        return BuddyAnalysis()
-    result = await generate_structured(
-        model=model,
-        system_instruction=BUDDY_SYSTEM,
-        user_prompt=buddy_user_prompt(lat, lon, known, recent_guidance),
-        response_schema=BuddyAnalysis,
-        images=[(image_bytes, image_mime)],
-    )
-    if result is None:
-        logger.warning("Buddy kare analizi: VLM başarısız — güvenli fallback")
-        return BuddyAnalysis()
-    return result
 
 
 @app.get("/health")
@@ -138,7 +84,7 @@ async def buddy_analyze(
     known: list[dict] = []
     if lat is not None and lon is not None:
         known = nearby_issues(lat, lon, settings.known_issues_radius_m)
-    return await analyze_buddy_frame(
+    return await patterns.analyze_buddy_frame(
         image_bytes, frame.content_type or "image/jpeg", lat, lon, known, recent_guidance
     )
 
@@ -178,7 +124,7 @@ async def buddy_analyze_video(
 
         async def run(timestamp: float, path: Path) -> dict:
             async with semaphore:
-                analysis = await analyze_buddy_frame(
+                analysis = await patterns.analyze_buddy_frame(
                     path.read_bytes(), "image/jpeg", lat, lon, known
                 )
             return {"t_seconds": timestamp, **analysis.model_dump()}
@@ -220,21 +166,7 @@ async def voice_ask(
     if frame is not None:
         images = [(await frame.read(), frame.content_type or "image/jpeg")]
 
-    model = _gemini_model_for("pattern_d")
-    if model is None:
-        return VoiceAnswer(answer_speak_text="Bağlantı sorunu var, biraz sonra tekrar dener misin?")
-
-    result = await generate_structured(
-        model=model,
-        system_instruction=VOICE_SYSTEM,
-        user_prompt=voice_user_prompt(transcript, screen_context, bool(images), lat, lon),
-        response_schema=VoiceAnswer,
-        images=images,
-    )
-    if result is None:
-        logger.warning("voice_ask: VLM başarısız — güvenli fallback dönülüyor")
-        return VoiceAnswer(answer_speak_text="Bağlantı sorunu var, biraz sonra tekrar dener misin?")
-    return result
+    return await patterns.answer_voice(transcript, screen_context, images, lat, lon)
 
 
 @app.post("/v1/speech/transcribe")
@@ -255,21 +187,7 @@ async def feedback_categorize(
 ) -> FeedbackResult:
     """Pattern B — Feedback: 1-3 foto → erişilebilirlik problemi kategorize JSON'u."""
     images = [(await p.read(), p.content_type or "image/jpeg") for p in photos]
-    model = _gemini_model_for("pattern_b")
-    if model is None:
-        return FeedbackResult()
-
-    result = await generate_structured(
-        model=model,
-        system_instruction=FEEDBACK_SYSTEM,
-        user_prompt=feedback_user_prompt(len(images)),
-        response_schema=FeedbackResult,
-        images=images,
-    )
-    if result is None:
-        logger.warning("feedback_categorize: VLM başarısız — güvenli fallback dönülüyor")
-        return FeedbackResult()
-    return result
+    return await patterns.categorize_feedback(images)
 
 
 @app.post("/v1/sport", response_model=SportDescription)
@@ -278,21 +196,7 @@ async def sport_describe(
 ) -> SportDescription:
     """Pattern C — Spor: 1 foto → spor aletinin Türkçe kullanım anlatımı JSON'u."""
     image_bytes = await photo.read()
-    model = _gemini_model_for("pattern_c")
-    if model is None:
-        return SportDescription()
-
-    result = await generate_structured(
-        model=model,
-        system_instruction=SPORT_SYSTEM,
-        user_prompt=sport_user_prompt(),
-        response_schema=SportDescription,
-        images=[(image_bytes, photo.content_type or "image/jpeg")],
-    )
-    if result is None:
-        logger.warning("sport_describe: VLM başarısız — güvenli fallback dönülüyor")
-        return SportDescription()
-    return result
+    return await patterns.describe_sport(image_bytes, photo.content_type or "image/jpeg")
 
 
 @app.post("/v1/speech/synthesize")
