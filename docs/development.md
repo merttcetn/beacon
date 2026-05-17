@@ -26,9 +26,28 @@ TTS_PROVIDER=falai
 
 ## Lokal Servis
 
+**Önerilen — `start.sh` (deterministik, her cihazda aynı):**
+
 ```bash
+./start.sh
+```
+
+Script nereden çağrılırsa çağrılsın repo köküne geçer, ön-kontrolleri yapar
+(proje dizini, `uv`, `.env`, bağımlılıklar, uygulama import'u, port), kabuktaki
+`GEMINI_API_KEY` gibi `.env`'i ezen ortam değişkenlerini bu çalıştırmaya özgü
+yok sayar ve uvicorn'u başlatır. Herhangi bir adım başarısız olursa net sebep +
+çözüm + tam log (`runtime/start.log`) basar. Port değiştirmek için: `PORT=8001 ./start.sh`.
+
+**Manuel alternatif** (script'in yaptığını elle yapmak istersen):
+
+```bash
+uv sync
 uv run uvicorn ai_pipeline.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+> Manuel komutu **mutlaka repo kökünden** (pyproject.toml'un olduğu dizin) çalıştır.
+> Üst klasörden çalıştırırsan `uv` projeyi bulamaz ve `ModuleNotFoundError: ai_pipeline`
+> alırsın. `start.sh` bu sorunu kendiliğinden çözer.
 
 Kontrol:
 
