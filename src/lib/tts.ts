@@ -12,6 +12,7 @@ let ttsQueueRunning = false;
 interface TtsQueueItem {
   text: string;
   resolve: () => void;
+  onStart?: () => void;
 }
 
 const ttsQueue: TtsQueueItem[] = [];
@@ -205,6 +206,44 @@ export async function speakTts(text: string) {
   });
 }
 
+// MOCK: Demo cache akışı için. Audio buffer hazır + play çağrısı tetiklendiği
+// an `onStart` senkron çağrılır; setLastSpoken'i bu callback'e koyduğumuzda
+// yazı ile ses aynı JS tick'inde başlar.
+export async function speakTtsWithStartCallback(
+  text: string,
+  onStart: () => void,
+): Promise<void> {
+  const cleanText = text.trim();
+  if (!cleanText) {
+    onStart();
+    return;
+  }
+
+  return new Promise<void>((resolve) => {
+    ttsQueue.push({ text: cleanText, resolve, onStart });
+    emitTtsState(true);
+    void runTtsQueue();
+  });
+}
+
+// MOCK: Demo cache için ses dosyalarını önceden diske indirir; sonraki
+// `speakTts`/`speakTtsWithStartCallback` çağrıları anında diskten okur.
+export async function prewarmTts(texts: string[]): Promise<void> {
+  await Promise.all(
+    texts.map(async (text) => {
+      const clean = text.trim();
+      if (!clean) return;
+      try {
+        await fetchAudioFile(clean);
+      } catch (error) {
+        if (!isAbortError(error)) {
+          console.warn('[tts] prewarm başarısız, sessizce geçiliyor:', error);
+        }
+      }
+    }),
+  );
+}
+
 async function runTtsQueue() {
   if (ttsQueueRunning) return;
   ttsQueueRunning = true;
@@ -232,6 +271,9 @@ async function runTtsQueue() {
           await sound.unloadAsync();
           continue;
         }
+
+        // Ses cihazdan akmaya başladığı an; yazıyı bu microtask'ta bas.
+        item.onStart?.();
 
         currentSound = sound;
         await new Promise<void>((resolvePlayback) => {

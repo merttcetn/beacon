@@ -22,7 +22,19 @@ import { useBuddyVoice } from '@/hooks/useBuddyVoice';
 import { hasAiApi } from '@/lib/aiApi';
 import { assist, isAbortError } from '@/lib/assist';
 import { analyzeBuddyFrame } from '@/lib/buddy';
-import { speakTts, stopTts, subscribeTtsState, waitForTtsIdle } from '@/lib/tts';
+import {
+  prewarmTts,
+  speakTts,
+  speakTtsWithStartCallback,
+  stopTts,
+  subscribeTtsState,
+  waitForTtsIdle,
+} from '@/lib/tts';
+import {
+  BUDDY_CACHE_DELAY_MS,
+  BUDDY_FRAME_CACHE,
+  USE_CACHE,
+} from '@/constants/buddyFrameCache';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily } from '@/theme';
 
@@ -347,6 +359,11 @@ export default function BuddyMain() {
 
   // "Sesle başla" girişine özel: ilk hızlı kareyi doğrudan /v1/buddy'ye gönder.
   useEffect(() => {
+    if (USE_CACHE) {
+      // MOCK: Demo cache modunda canlı VLM çağrısı yok.
+      if (quickStartRequested && !quickStartComplete) setQuickStartComplete(true);
+      return;
+    }
     if (!quickStartRequested) return;
     if (quickStartRanRef.current) return;
     if (!isBuddyActive) return;
@@ -424,6 +441,7 @@ export default function BuddyMain() {
   // ANALYZE_INTERVAL_MS'de tek kare → /v1/assist event=buddy_frame.
   // Voice turn veya TTS aktifken atla.
   useEffect(() => {
+    if (USE_CACHE) return; // MOCK: Demo cache modunda canlı tick yok.
     if (!isBuddyActive) return;
     if (!quickStartComplete) return;
     if (!hasAiApi()) return;
@@ -485,6 +503,51 @@ export default function BuddyMain() {
       vlmInflightRef.current = false;
     };
   }, [cameraReady, cameraPermission, isBuddyActive, quickStartComplete, speakBuddyGuidance]);
+
+  // MOCK: USE_CACHE açıkken canlı /v1/assist yerine 13 kayıtlı buddy_frame
+  // olayını sırayla oynat. Her olayda speakTtsWithStartCallback, audio çalmaya
+  // başladığı microtask'ta setLastSpoken'i tetikler -> yazı ile ses aynı anda.
+  useEffect(() => {
+    if (!USE_CACHE) return;
+    if (!isBuddyActive) return;
+    if (!quickStartComplete) return;
+
+    let cancelled = false;
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+      });
+
+    void (async () => {
+      await prewarmTts(BUDDY_FRAME_CACHE.map((e) => e.speak_text));
+      for (const event of BUDDY_FRAME_CACHE) {
+        if (cancelled || !screenActiveRef.current) return;
+        while (!cancelled && voiceFlowActiveRef.current) {
+          await sleep(200);
+        }
+        if (cancelled || !screenActiveRef.current) return;
+
+        const clean = event.speak_text.trim();
+        if (!clean) continue;
+
+        const nextGuidance = [...recentGuidanceRef.current, clean];
+        recentGuidanceRef.current = nextGuidance.slice(-RECENT_GUIDANCE_MAX);
+
+        await speakTtsWithStartCallback(clean, () => {
+          if (!screenActiveRef.current) return;
+          setLastSpoken(clean);
+        });
+        if (cancelled || !screenActiveRef.current) return;
+        await waitForTtsIdle();
+        if (cancelled || !screenActiveRef.current) return;
+        await sleep(BUDDY_CACHE_DELAY_MS);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isBuddyActive, quickStartComplete]);
 
   useEffect(() => {
     glow.value = withRepeat(

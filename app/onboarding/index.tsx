@@ -318,17 +318,31 @@ function Atmosphere() {
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Svg width="100%" height="100%">
         <Defs>
-          <RadialGradient id="onboardingAtmosphereTop" cx="50%" cy="22%" r="68%">
-            <Stop offset="0%" stopColor={BUDDY_ACCENT} stopOpacity="0.10" />
-            <Stop offset="55%" stopColor={BUDDY_ACCENT} stopOpacity="0.02" />
+          <RadialGradient id="onboardingAtmosphereHalo" cx="50%" cy="46%" r="58%">
+            <Stop offset="0%" stopColor={BUDDY_ACCENT} stopOpacity="0.22" />
+            <Stop offset="55%" stopColor={BUDDY_ACCENT} stopOpacity="0.07" />
             <Stop offset="100%" stopColor={BUDDY_ACCENT} stopOpacity="0" />
           </RadialGradient>
-          <RadialGradient id="onboardingAtmosphereFloor" cx="50%" cy="100%" r="60%">
-            <Stop offset="0%" stopColor="#0B1220" stopOpacity="0.06" />
-            <Stop offset="100%" stopColor="#0B1220" stopOpacity="0" />
+          <RadialGradient id="onboardingAtmospherePeach" cx="50%" cy="14%" r="70%">
+            <Stop offset="0%" stopColor="#FFD9A8" stopOpacity="0.55" />
+            <Stop offset="45%" stopColor="#FFD9A8" stopOpacity="0.18" />
+            <Stop offset="100%" stopColor="#FFD9A8" stopOpacity="0" />
+          </RadialGradient>
+          <RadialGradient id="onboardingAtmosphereMist" cx="8%" cy="72%" r="55%">
+            <Stop offset="0%" stopColor="#8CD790" stopOpacity="0.16" />
+            <Stop offset="60%" stopColor="#8CD790" stopOpacity="0.04" />
+            <Stop offset="100%" stopColor="#8CD790" stopOpacity="0" />
+          </RadialGradient>
+          <RadialGradient id="onboardingAtmosphereFloor" cx="50%" cy="104%" r="65%">
+            <Stop offset="0%" stopColor="#2A1F14" stopOpacity="0.10" />
+            <Stop offset="70%" stopColor="#2A1F14" stopOpacity="0.03" />
+            <Stop offset="100%" stopColor="#2A1F14" stopOpacity="0" />
           </RadialGradient>
         </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#onboardingAtmosphereTop)" />
+        <Rect x="0" y="0" width="100%" height="100%" fill="#FAF6EE" />
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#onboardingAtmosphereHalo)" />
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#onboardingAtmospherePeach)" />
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#onboardingAtmosphereMist)" />
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#onboardingAtmosphereFloor)" />
       </Svg>
     </View>
@@ -416,7 +430,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: colors.bg.elevated,
     borderWidth: 1,
-    borderColor: colors.border.divider,
+    borderColor: 'rgba(26,29,36,0.10)',
   },
   firmaChipPressed: {
     opacity: 0.7,
@@ -464,7 +478,7 @@ const styles = StyleSheet.create({
     height: ORBIT_SIZE,
     borderRadius: ORBIT_SIZE / 2,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(91,212,185,0.22)',
+    borderColor: 'rgba(91,212,185,0.45)',
     borderStyle: 'dashed',
   },
   orbitWrap: {
@@ -566,7 +580,7 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border.divider,
+    backgroundColor: 'rgba(26,29,36,0.10)',
   },
   dividerText: {
     fontFamily: fontFamily.mono,
@@ -577,10 +591,10 @@ const styles = StyleSheet.create({
   volunteerCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.divider,
+    borderColor: 'rgba(26,29,36,0.08)',
     paddingVertical: 14,
     paddingLeft: 16,
     paddingRight: 42,
