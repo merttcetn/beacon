@@ -43,6 +43,11 @@ interface AssistArgs {
   lon?: number | null;
   recentGuidance?: string | null;
   nearbyTickets?: NearbyTicket[] | null;
+  signal?: AbortSignal;
+}
+
+export function isAbortError(err: unknown): boolean {
+  return err instanceof Error && (err.name === 'AbortError' || /aborted/i.test(err.message));
 }
 
 export async function assist(args: AssistArgs): Promise<AssistResponse> {
@@ -85,6 +90,7 @@ export async function assist(args: AssistArgs): Promise<AssistResponse> {
   const res = await fetch(`${AI_API_URL}/v1/assist`, {
     method: 'POST',
     body: form,
+    signal: args.signal,
   });
 
   if (!res.ok) {

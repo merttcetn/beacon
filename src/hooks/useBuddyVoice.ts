@@ -7,7 +7,7 @@ import {
 } from 'expo-audio';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { speakTts, subscribeTtsState, waitForTtsIdle } from '@/lib/tts';
-import { assist, type NearbyTicket, type ScreenContext } from '@/lib/assist';
+import { assist, isAbortError, type NearbyTicket, type ScreenContext } from '@/lib/assist';
 import type { AssistResponse } from '@/lib/vlm';
 
 export const VAD_CONFIG = {
@@ -37,6 +37,7 @@ interface UseBuddyVoiceArgs {
   onSpeechStart?: () => void;
   onVoiceFlowChange?: (active: boolean) => void;
   getVoiceContext?: () => VoiceContext | Promise<VoiceContext>;
+  isActive?: () => boolean;
 }
 
 export function useBuddyVoice({
@@ -48,6 +49,7 @@ export function useBuddyVoice({
   onSpeechStart,
   onVoiceFlowChange,
   getVoiceContext,
+  isActive,
 }: UseBuddyVoiceArgs) {
   const recorder = useAudioRecorder({
     ...RecordingPresets.HIGH_QUALITY,
@@ -68,9 +70,30 @@ export function useBuddyVoice({
   const recorderReady = useRef(false);
   const recordingRef = useRef(false);
   const startInFlight = useRef(false);
+  const activeRef = useRef(false);
+  const assistAbortRef = useRef<AbortController | null>(null);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recorderStopForPlayback = useRef<Promise<void> | null>(null);
 
   enabledRef.current = enabled;
+
+  useEffect(() => {
+    activeRef.current = true;
+    return () => {
+      activeRef.current = false;
+      assistAbortRef.current?.abort();
+      assistAbortRef.current = null;
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const canContinue = useCallback(
+    () => activeRef.current && enabledRef.current && (isActive?.() ?? true),
+    [isActive],
+  );
 
   useEffect(() => {
     recordingRef.current = recorderState.isRecording;
@@ -86,6 +109,7 @@ export function useBuddyVoice({
   }, []);
 
   const startRecording = useCallback(async () => {
+    if (!canContinue()) return;
     if (!recorderReady.current) return;
     if (!permissionGranted.current) return;
     if (recordingRef.current || startInFlight.current) return;
@@ -97,11 +121,12 @@ export function useBuddyVoice({
         await recorderStopForPlayback.current;
       }
       await configureRecordingAudioMode();
-      if (!enabledRef.current || ttsGate.current || isTranscribing.current) return;
+      if (!canContinue() || ttsGate.current || isTranscribing.current) return;
       await recorder.prepareToRecordAsync({
         ...RecordingPresets.HIGH_QUALITY,
         isMeteringEnabled: true,
       });
+      if (!canContinue()) return;
       recorder.record();
       recordingRef.current = true;
       setListening(true);
@@ -111,11 +136,12 @@ export function useBuddyVoice({
     } finally {
       startInFlight.current = false;
     }
-  }, [configureRecordingAudioMode, recorder, onListeningChange]);
+  }, [canContinue, configureRecordingAudioMode, recorder, onListeningChange]);
 
   useEffect(() => {
     const unsub = subscribeTtsState((speaking) => {
       ttsGate.current = speaking;
+      if (!canContinue()) return;
       setIsSpeaking(speaking);
       if (speaking) {
         voiceState.current = 'idle';
@@ -139,39 +165,49 @@ export function useBuddyVoice({
         return;
       }
 
-      if (enabledRef.current && !isTranscribing.current) {
-        setTimeout(() => {
-          void startRecording();
+      if (canContinue() && !isTranscribing.current) {
+        restartTimerRef.current = setTimeout(() => {
+          restartTimerRef.current = null;
+          if (canContinue()) void startRecording();
         }, 80);
       }
     });
     return unsub;
-  }, [recorder, startRecording, onListeningChange]);
+  }, [canContinue, recorder, startRecording, onListeningChange]);
 
   const speakAssistant = useCallback(
     async (text: string) => {
       const clean = text.trim();
+      if (!canContinue()) return;
       if (!clean) return;
       onAssistantSpeech?.(clean);
+      if (!canContinue()) return;
       await speakTts(clean);
+      if (!canContinue()) return;
       await waitForTtsIdle();
     },
-    [onAssistantSpeech],
+    [canContinue, onAssistantSpeech],
   );
 
   const handleUtterance = useCallback(async () => {
+    if (!canContinue()) return;
     if (isTranscribing.current) return;
     isTranscribing.current = true;
     setListening(false);
     onListeningChange?.(false);
+    const controller = new AbortController();
+    assistAbortRef.current?.abort();
+    assistAbortRef.current = controller;
     try {
       recordingRef.current = false;
       await recorder.stop();
+      if (!canContinue() || controller.signal.aborted) return;
       const uri = recorder.uri;
       if (!uri) return;
       if (!getVoiceContext) return;
       try {
         const ctx = await getVoiceContext();
+        if (!canContinue() || controller.signal.aborted) return;
         const result = await assist({
           event: 'voice',
           audioUri: uri,
@@ -180,25 +216,32 @@ export function useBuddyVoice({
           lat: ctx.lat,
           lon: ctx.lon,
           nearbyTickets: ctx.nearbyTickets,
+          signal: controller.signal,
         });
+        if (!canContinue() || controller.signal.aborted) return;
         onAssistResult?.(result);
         const reply = result.speak_text.trim();
         if (reply) await speakAssistant(reply);
       } catch (err) {
+        if (isAbortError(err)) return;
         console.warn('[voice] /v1/assist voice fail', err);
       }
     } catch (err) {
       console.warn('[voice] utterance handling failed', err);
     } finally {
+      if (assistAbortRef.current === controller) {
+        assistAbortRef.current = null;
+      }
       isTranscribing.current = false;
       voiceState.current = 'idle';
       aboveThresholdMs.current = 0;
       silenceMs.current = 0;
       segmentMs.current = 0;
       onVoiceFlowChange?.(false);
-      if (enabledRef.current) {
-        setTimeout(() => {
-          void startRecording();
+      if (canContinue()) {
+        restartTimerRef.current = setTimeout(() => {
+          restartTimerRef.current = null;
+          if (canContinue()) void startRecording();
         }, 80);
       }
     }
@@ -210,6 +253,7 @@ export function useBuddyVoice({
     speakAssistant,
     onAssistResult,
     onVoiceFlowChange,
+    canContinue,
   ]);
 
   useEffect(() => {
@@ -228,6 +272,11 @@ export function useBuddyVoice({
     })();
     return () => {
       cancelled = true;
+      assistAbortRef.current?.abort();
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
       recorderReady.current = false;
       recordingRef.current = false;
       recorder.stop().catch(() => {});

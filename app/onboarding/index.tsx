@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import Animated, {
   Easing,
+  ReduceMotion,
   interpolate,
   useAnimatedProps,
   useAnimatedStyle,
@@ -39,6 +40,7 @@ const RING_BASE = 188;
 const RING_STEP = 64;
 const ICON_COLOR_LIGHT = 'rgba(255,255,255,0.92)';
 const BUDDY_ACCENT = '#5BD4B9';
+const BUDDY_QUICK_START_HREF = '/buddy?quickStart=1' as Href;
 
 const HERO_ANIMATION = require('@/../assets/animations/onboarding-walking.json');
 
@@ -82,6 +84,7 @@ function BuddyPrimaryButton({ onPress }: { onPress: () => void }) {
   const mount = useSharedValue(0);
   const glow = useSharedValue(0.55);
   const orbit = useSharedValue(0);
+  const breathe = useSharedValue(0);
   const buttonRef = useRef<View>(null);
 
   useEffect(() => {
@@ -92,23 +95,38 @@ function BuddyPrimaryButton({ onPress }: { onPress: () => void }) {
       true,
     );
     orbit.value = withRepeat(
-      withTiming(1, { duration: 9000, easing: Easing.linear }),
+      withTiming(1, {
+        duration: 9000,
+        easing: Easing.linear,
+        reduceMotion: ReduceMotion.Never,
+      }),
       -1,
       false,
+    );
+    breathe.value = withRepeat(
+      withTiming(1, {
+        duration: 3400,
+        easing: Easing.inOut(Easing.sin),
+        reduceMotion: ReduceMotion.Never,
+      }),
+      -1,
+      true,
     );
     const t = setTimeout(() => {
       const node = buttonRef.current ? findNodeHandle(buttonRef.current) : null;
       if (node) AccessibilityInfo.setAccessibilityFocus(node);
     }, 250);
     return () => clearTimeout(t);
-  }, [mount, glow, orbit]);
+  }, [mount, glow, orbit, breathe]);
 
   const circleStyle = useAnimatedStyle(() => ({
     transform: [
+      { translateY: interpolate(breathe.value, [0, 1], [2.5, -2.5]) },
       {
         scale:
           interpolate(mount.value, [0, 1], [0.92, 1]) *
-          interpolate(press.value, [0, 1], [1, 0.97]),
+          interpolate(press.value, [0, 1], [1, 0.97]) *
+          interpolate(breathe.value, [0, 1], [0.985, 1.018]),
       },
     ],
     opacity: interpolate(mount.value, [0, 1], [0, 1]),
@@ -347,12 +365,14 @@ export default function Onboarding() {
       <Atmosphere />
 
       <View style={styles.header}>
-        <Wordmark />
+        <View style={styles.headerCenter} pointerEvents="none">
+          <Wordmark size={32} />
+        </View>
         <FirmaChip onPress={() => pick('company', '/company')} />
       </View>
 
       <View style={styles.centerArea}>
-        <BuddyPrimaryButton onPress={() => pick('visually_impaired', '/buddy')} />
+        <BuddyPrimaryButton onPress={() => pick('visually_impaired', BUDDY_QUICK_START_HREF)} />
       </View>
 
       <View style={styles.bottomArea}>
@@ -373,8 +393,16 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     paddingHorizontal: spacing.s5,
+    paddingTop: spacing.s4,
+    paddingBottom: spacing.s2,
+    minHeight: 52,
+  },
+  headerCenter: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingTop: spacing.s4,
     paddingBottom: spacing.s2,
   },

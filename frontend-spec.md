@@ -1,4 +1,4 @@
-# [ÜRÜN_ADI] — Frontend Specification
+# Beacon — Frontend Specification
 
 > **Bu doküman ne için?** AI asistanlara (UI implementasyonu, component kararları, ekran akışı için) **context** olarak verilecek frontend spec'idir. `product-spec.md` ile birlikte okunmalıdır — ürün mantığı orada, UI implementasyon detayları burada.
 
@@ -376,7 +376,7 @@ Tab Bar:
 
 **Ekran anatomisi:**
 
-1. **Üst çubuk (60pt)** — sol: arama ikonu, orta: "[ÜRÜN_ADI]" logo, sağ: filtre ikonu
+1. **Üst çubuk (60pt)** — sol: arama ikonu, orta: "Beacon" logo, sağ: filtre ikonu
 2. **Harita** — Stadia Maps tile (Alidade Smooth) + Marker'lar; pin tasarımı bkz. §6
 3. **Sağ alt: FAB (floating action button)** — "Problem Bildir" → Feedback akışı açılır
 4. **Sol alt: Heat map toggle** — "Pinler / Yoğunluk" switch
@@ -891,7 +891,7 @@ Jüri demosu için UI optimize edilmeli:
 
 2. **Font seçimi netleşmeli** — Inter mi başka mı? Inter güvenli ama özgün değil. Alternatif: Manrope (display), Geist (body). Karar: ilk 2 saatte.
 3. **Stadia Maps API key paylaşımı** — Ekipte tek hesap mı, herkes ayrı mı? Tek hesap önerilir, key `.env`'de.
-4. **Logo / brand identity** — `[ÜRÜN_ADI]` placeholder, gerçek isim ve logo netleştiğinde.
+4. **Logo / brand identity** — `Beacon` placeholder, gerçek isim ve logo netleştiğinde.
 5. **Dark mode** — MVP'de yok mu? Karar: yok (zaman). POST-MVP.
 6. **Tablet desteği** — iPad'de nasıl görünür? MVP'de iPhone-only, iPad'de scaled.
 

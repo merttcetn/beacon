@@ -1,7 +1,7 @@
 export const colors = {
   bg: {
-    primary: '#FAF7F2',
-    secondary: '#F0EDE6',
+    primary: '#FFFFFF',
+    secondary: '#F4F7F4',
     elevated: '#FFFFFF',
     deep: '#11171F',
   },
@@ -9,11 +9,11 @@ export const colors = {
     primary: '#1A1D24',
     secondary: '#4A5060',
     tertiary: '#8B92A3',
-    inverse: '#FAF7F2',
+    inverse: '#FFFFFF',
   },
   border: {
-    default: '#E2DDD2',
-    divider: '#EAE6DC',
+    default: '#E4E8E5',
+    divider: '#EEF1EE',
     hairline: 'rgba(26,29,36,0.08)',
   },
   status: {
@@ -28,9 +28,10 @@ export const colors = {
     high: '#FFD6D6',
   },
   accent: {
-    primary: '#1F3A5F',
-    hover: '#2A4D7A',
-    pressed: '#14283F',
+    primary: '#285943',
+    hover: '#36755A',
+    pressed: '#1A4030',
+    soft: '#8CD790',
   },
   role: {
     visuallyImpaired: '#5E4FA2',
@@ -38,7 +39,7 @@ export const colors = {
     company: '#1F3A5F',
   },
   map: {
-    land: '#FAF7F2',
+    land: '#FFFFFF',
     water: '#4A90B8',
     park: '#C8D5C0',
     roadMajor: '#2C2E33',

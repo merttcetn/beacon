@@ -4,7 +4,17 @@ import { File, Paths } from 'expo-file-system';
 import { AI_API_URL, assertAiApi } from './aiApi';
 
 let currentSound: Audio.Sound | null = null;
-let requestId = 0;
+let currentTtsAbortController: AbortController | null = null;
+let currentPlaybackResolve: (() => void) | null = null;
+let ttsGeneration = 0;
+let ttsQueueRunning = false;
+
+interface TtsQueueItem {
+  text: string;
+  resolve: () => void;
+}
+
+const ttsQueue: TtsQueueItem[] = [];
 
 async function configurePlaybackAudioMode() {
   await Promise.all([
@@ -67,6 +77,10 @@ export function waitForTtsIdle(): Promise<void> {
   });
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'AbortError' || /aborted/i.test(error.message));
+}
+
 async function unloadCurrentSound() {
   const sound = currentSound;
   currentSound = null;
@@ -83,6 +97,12 @@ async function unloadCurrentSound() {
   } catch {
     // Nothing useful to recover in the demo flow.
   }
+}
+
+function resolveCurrentPlayback() {
+  const resolve = currentPlaybackResolve;
+  currentPlaybackResolve = null;
+  resolve?.();
 }
 
 function textHash(text: string): string {
@@ -112,7 +132,7 @@ function findPersistedAudioFile(hash: string): string | null {
   return null;
 }
 
-async function fetchAudioFile(text: string): Promise<string> {
+async function fetchAudioFile(text: string, signal?: AbortSignal): Promise<string> {
   const cached = audioFileCache.get(text);
   if (cached) return cached;
 
@@ -131,6 +151,7 @@ async function fetchAudioFile(text: string): Promise<string> {
   const response = await fetch(`${AI_API_URL}/v1/speech/synthesize`, {
     method: 'POST',
     body: form,
+    signal,
   });
 
   if (!response.ok) {
@@ -162,8 +183,14 @@ async function fetchAudioFile(text: string): Promise<string> {
 }
 
 export async function stopTts() {
-  requestId += 1;
+  ttsGeneration += 1;
+  while (ttsQueue.length > 0) {
+    ttsQueue.shift()?.resolve();
+  }
+  currentTtsAbortController?.abort();
+  currentTtsAbortController = null;
   await unloadCurrentSound();
+  resolveCurrentPlayback();
   emitTtsState(false);
 }
 
@@ -171,39 +198,68 @@ export async function speakTts(text: string) {
   const cleanText = text.trim();
   if (!cleanText) return;
 
-  const activeRequest = requestId + 1;
-  requestId = activeRequest;
+  return new Promise<void>((resolve) => {
+    ttsQueue.push({ text: cleanText, resolve });
+    emitTtsState(true);
+    void runTtsQueue();
+  });
+}
 
-  await unloadCurrentSound();
-  emitTtsState(true);
+async function runTtsQueue() {
+  if (ttsQueueRunning) return;
+  ttsQueueRunning = true;
 
   try {
-    await configurePlaybackAudioMode();
-    const audioUri = await fetchAudioFile(cleanText);
-    if (activeRequest !== requestId) return;
+    while (ttsQueue.length > 0) {
+      const item = ttsQueue.shift();
+      if (!item) continue;
 
-    const { sound } = await Audio.Sound.createAsync(
-      { uri: audioUri },
-      { shouldPlay: true, volume: 1 },
-    );
+      const itemGeneration = ttsGeneration;
+      const controller = new AbortController();
+      currentTtsAbortController = controller;
 
-    if (activeRequest !== requestId) {
-      await sound.unloadAsync();
-      return;
-    }
+      try {
+        await configurePlaybackAudioMode();
+        const audioUri = await fetchAudioFile(item.text, controller.signal);
+        if (itemGeneration !== ttsGeneration || controller.signal.aborted) continue;
 
-    currentSound = sound;
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (status.isLoaded && status.didJustFinish) {
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: audioUri },
+          { shouldPlay: true, volume: 1 },
+        );
+
+        if (itemGeneration !== ttsGeneration || controller.signal.aborted) {
+          await sound.unloadAsync();
+          continue;
+        }
+
+        currentSound = sound;
+        await new Promise<void>((resolvePlayback) => {
+          currentPlaybackResolve = resolvePlayback;
+          sound.setOnPlaybackStatusUpdate((status) => {
+            if ((status.isLoaded && status.didJustFinish) || (!status.isLoaded && status.error)) {
+              resolvePlayback();
+            }
+          });
+        });
+
         if (currentSound === sound) currentSound = null;
-        sound.unloadAsync().catch(() => {});
-        if (activeRequest === requestId) emitTtsState(false);
+        await sound.unloadAsync().catch(() => {});
+      } catch (error) {
+        if (!isAbortError(error) && itemGeneration === ttsGeneration) {
+          console.warn('[tts] /v1/speech/synthesize oynatılamadı, sessiz kalınıyor:', error);
+        }
+      } finally {
+        if (currentTtsAbortController === controller) {
+          currentTtsAbortController = null;
+        }
+        resolveCurrentPlayback();
+        item.resolve();
       }
-    });
-  } catch (error) {
-    if (activeRequest === requestId) {
-      console.warn('[tts] /v1/speech/synthesize oynatılamadı, sessiz kalınıyor:', error);
-      emitTtsState(false);
     }
+  } finally {
+    ttsQueueRunning = false;
+    if (ttsQueue.length === 0) emitTtsState(false);
+    else void runTtsQueue();
   }
 }

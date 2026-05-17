@@ -1,6 +1,7 @@
 import { AppMap, type AppMapMarker } from '@/components/AppMap';
 import { DockBar } from '@/components/DockBar';
 import { Loader } from '@/components/Loader';
+import { BeaconMark } from '@/components/Wordmark';
 import { DEFAULT_REGION } from '@/constants/region';
 import { useTickets } from '@/lib/tickets';
 import { colors, fontFamily } from '@/theme';
@@ -128,9 +129,7 @@ function VolunteerTopBar({
         </Pressable>
 
         <View style={styles.topBarBrand} pointerEvents="none">
-          <View style={[styles.topBarBrandDot, { backgroundColor: colors.role.visuallyImpaired }]} />
-          <View style={[styles.topBarBrandDot, { backgroundColor: colors.role.volunteer }]} />
-          <View style={[styles.topBarBrandDot, { backgroundColor: colors.role.company }]} />
+          <BeaconMark size={18} tone="onDark" />
         </View>
 
         <View style={styles.topBarDivider} />
@@ -618,7 +617,7 @@ const styles = StyleSheet.create({
     paddingLeft: 5,
     paddingRight: 4,
     borderRadius: 999,
-    backgroundColor: 'rgba(17,23,31,0.88)',
+    backgroundColor: 'rgba(40,89,67,0.92)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.14)',
     shadowColor: '#1A1D24',
@@ -639,10 +638,8 @@ const styles = StyleSheet.create({
   topBarBrand: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
     paddingHorizontal: 10,
   },
-  topBarBrandDot: { width: 5.5, height: 5.5, borderRadius: 99 },
   topBarDivider: {
     width: 1,
     height: 18,

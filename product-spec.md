@@ -1,12 +1,12 @@
-# [ÜRÜN_ADI] — Product Specification
+# Beacon — Product Specification
 
-> **Bu doküman ne için?** Bu dosya AI asistanlara (kod yazımı, mimari kararlar, UX kararları için) **context** olarak verilecek bir ürün spec dosyasıdır. Tek kaynak (single source of truth). Implementation kararları bu spec'e referansla alınmalıdır. Doküman boyunca `[ÜRÜN_ADI]` placeholder olarak kullanılmıştır.
+> **Bu doküman ne için?** Bu dosya AI asistanlara (kod yazımı, mimari kararlar, UX kararları için) **context** olarak verilecek bir ürün spec dosyasıdır. Tek kaynak (single source of truth). Implementation kararları bu spec'e referansla alınmalıdır. Doküman boyunca `Beacon` placeholder olarak kullanılmıştır.
 
 ---
 
 ## 1. ELEVATOR PITCH
 
-[ÜRÜN_ADI], görme engelli bireylerin dış mekan yürüyüşlerini güvenli kılan bir AI buddy uygulamasıdır. Telefon kamerasından gelen görüntüleri Vision Language Model (VLM) ile işleyip, kulaklıktan Türkçe sesli rehberlik (TTS) sunar.
+Beacon, görme engelli bireylerin dış mekan yürüyüşlerini güvenli kılan bir AI buddy uygulamasıdır. Telefon kamerasından gelen görüntüleri Vision Language Model (VLM) ile işleyip, kulaklıktan Türkçe sesli rehberlik (TTS) sunar.
 
 Uygulama üç paydaşı tek platformda birleştirir:
 1. **Görme engelli kullanıcı** — AI buddy ile gerçek zamanlı yürüyüş ve spor aleti tanıma rehberliği alır

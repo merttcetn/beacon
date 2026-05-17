@@ -3,7 +3,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -20,13 +20,15 @@ import { PulseDot } from '@/components/PulseDot';
 import { Waveform } from '@/components/Waveform';
 import { useBuddyVoice } from '@/hooks/useBuddyVoice';
 import { hasAiApi } from '@/lib/aiApi';
-import { assist } from '@/lib/assist';
+import { assist, isAbortError } from '@/lib/assist';
+import { analyzeBuddyFrame } from '@/lib/buddy';
 import { speakTts, stopTts, subscribeTtsState, waitForTtsIdle } from '@/lib/tts';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily } from '@/theme';
 
 const HOLD_DURATION_MS = 1000;
 const TICK_INTERVAL_MS = 125;
+const QUICK_START_DELAY_MS = 2000;
 const ANALYZE_INTERVAL_MS = 5000;
 const RECENT_GUIDANCE_MAX = 3;
 const TICK_PATTERN: Haptics.ImpactFeedbackStyle[] = [
@@ -49,10 +51,17 @@ const AnimatedRect = Animated.createAnimatedComponent(Rect);
 export default function BuddyMain() {
   useKeepAwake();
   const router = useRouter();
+  const params = useLocalSearchParams();
   const reset = useUserStore((s) => s.reset);
+  const quickStartParam = params.quickStart;
+  const quickStartRequested = Array.isArray(quickStartParam)
+    ? quickStartParam.includes('1')
+    : quickStartParam === '1';
 
   const [lastSpoken, setLastSpoken] = useState<string>('');
   const [debugMode, setDebugMode] = useState(false);
+  const [isBuddyActive, setIsBuddyActive] = useState(false);
+  const [quickStartComplete, setQuickStartComplete] = useState(!quickStartRequested);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const debugTapTimes = useRef<number[]>([]);
 
@@ -70,6 +79,21 @@ export default function BuddyMain() {
   const voiceFlowActiveRef = useRef(false);
   const lastFrameUriRef = useRef<string | null>(null);
   const recentGuidanceRef = useRef<string[]>([]);
+  const screenActiveRef = useRef(false);
+  const buddyFrameAbortRef = useRef<AbortController | null>(null);
+  const quickStartAbortRef = useRef<AbortController | null>(null);
+  const quickStartRanRef = useRef(false);
+  const quickStartStartedAtRef = useRef<number | null>(
+    quickStartRequested ? Date.now() : null,
+  );
+
+  useEffect(() => {
+    quickStartAbortRef.current?.abort();
+    quickStartAbortRef.current = null;
+    quickStartRanRef.current = false;
+    quickStartStartedAtRef.current = quickStartRequested ? Date.now() : null;
+    setQuickStartComplete(!quickStartRequested);
+  }, [quickStartRequested]);
 
   function cancelHold(silent = false) {
     if (holdTimer.current) {
@@ -91,6 +115,29 @@ export default function BuddyMain() {
     reset();
     router.replace('/onboarding');
   }, [reset, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      screenActiveRef.current = true;
+      setIsBuddyActive(true);
+
+      return () => {
+        screenActiveRef.current = false;
+        setIsBuddyActive(false);
+        voiceFlowActiveRef.current = false;
+        buddyFrameAbortRef.current?.abort();
+        buddyFrameAbortRef.current = null;
+        quickStartAbortRef.current?.abort();
+        quickStartAbortRef.current = null;
+        vlmInflightRef.current = false;
+        void stopTts();
+        if (holdTimer.current) clearTimeout(holdTimer.current);
+        if (tickTimer.current) clearInterval(tickTimer.current);
+      };
+    }, []),
+  );
+
+  const isBuddyScreenActive = useCallback(() => screenActiveRef.current, []);
 
   const onboardingSwipe = useMemo(
     () =>
@@ -132,22 +179,24 @@ export default function BuddyMain() {
   }
 
   const { metering, isSpeaking } = useBuddyVoice({
-    enabled: voiceEnabled,
+    enabled: voiceEnabled && isBuddyActive,
     onSpeechStart: () => {
-      // Kullanıcı eşik üstü konuşmaya başladı — çalan TTS varsa kes, voice turn
-      // sona erene kadar buddy_frame tick'i atla.
+      if (!screenActiveRef.current) return;
+      // Kullanıcı konuşurken buddy_frame tick'i atla; TTS aktifken kayıt zaten durur.
       voiceFlowActiveRef.current = true;
-      void stopTts();
     },
     onVoiceFlowChange: (active) => {
+      if (!screenActiveRef.current) return;
       voiceFlowActiveRef.current = active;
     },
     onAssistantSpeech: (text) => {
+      if (!screenActiveRef.current) return;
       setLastSpoken(text);
       const next = [...recentGuidanceRef.current, text];
       recentGuidanceRef.current = next.slice(-RECENT_GUIDANCE_MAX);
     },
     onAssistResult: (result) => {
+      if (!screenActiveRef.current) return;
       if (result.ui_action === 'open_ticket' && result.ticket) {
         // TODO: ticket payload'unu n8n webhook'una ilet (sesli ticket akışı).
         console.warn('[buddy] open_ticket (n8n iletimi henüz yapılmadı):', result.ticket);
@@ -156,6 +205,7 @@ export default function BuddyMain() {
       }
     },
     onPermissionDenied: () => {
+      if (!screenActiveRef.current) return;
       console.warn('[buddy] mikrofon izni reddedildi — debug moduna geçildi');
       setVoiceEnabled(false);
       setDebugMode(true);
@@ -166,6 +216,7 @@ export default function BuddyMain() {
       lon: coordsRef.current?.lon,
       screenContext: 'buddy_mode',
     }),
+    isActive: isBuddyScreenActive,
   });
 
   const waveformMode: 'idle' | 'listening' | 'speaking' = isSpeaking
@@ -283,33 +334,118 @@ export default function BuddyMain() {
 
   const speakBuddyGuidance = useCallback(async (text: string) => {
     const clean = text.trim();
+    if (!screenActiveRef.current) return;
     if (!clean) return;
     setLastSpoken(clean);
     const next = [...recentGuidanceRef.current, clean];
     recentGuidanceRef.current = next.slice(-RECENT_GUIDANCE_MAX);
+    if (!screenActiveRef.current) return;
     await speakTts(clean);
+    if (!screenActiveRef.current) return;
     await waitForTtsIdle();
   }, []);
 
-  // test.html canonical akışı: her ANALYZE_INTERVAL_MS'de tek kare → /v1/assist
-  // event=buddy_frame. Voice turn veya TTS aktifken atla.
+  // "Sesle başla" girişine özel: ilk hızlı kareyi doğrudan /v1/buddy'ye gönder.
   useEffect(() => {
+    if (!quickStartRequested) return;
+    if (quickStartRanRef.current) return;
+    if (!isBuddyActive) return;
+    if (!hasAiApi()) return;
+    if (!cameraPermission?.granted) return;
+    if (!cameraReady) return;
+
+    let cancelled = false;
+    let controller: AbortController | null = null;
+    const startedAt = quickStartStartedAtRef.current ?? Date.now();
+    quickStartStartedAtRef.current = startedAt;
+    const delay = Math.max(0, QUICK_START_DELAY_MS - (Date.now() - startedAt));
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        quickStartRanRef.current = true;
+        controller = new AbortController();
+        quickStartAbortRef.current = controller;
+
+        try {
+          if (!screenActiveRef.current || cancelled) return;
+          if (voiceFlowActiveRef.current || ttsSpeakingRef.current) return;
+          if (!cameraRef.current) return;
+
+          const photo = await cameraRef.current.takePictureAsync({
+            quality: 0.4,
+            skipProcessing: true,
+            shutterSound: false,
+          });
+          if (!screenActiveRef.current || cancelled || controller.signal.aborted) return;
+          if (!photo?.uri) return;
+
+          lastFrameUriRef.current = photo.uri;
+          const result = await analyzeBuddyFrame({
+            frameUri: photo.uri,
+            lat: coordsRef.current?.lat,
+            lon: coordsRef.current?.lon,
+            recentGuidance: recentGuidanceRef.current.join('\n'),
+            signal: controller.signal,
+          });
+          if (!screenActiveRef.current || cancelled || controller.signal.aborted) return;
+          const text = result.speak_text.trim();
+          if (text && !voiceFlowActiveRef.current) {
+            await speakBuddyGuidance(text);
+          }
+        } catch (err) {
+          if (!isAbortError(err)) {
+            console.warn('[buddy] /v1/buddy quick-start hata', err);
+          }
+        } finally {
+          if (quickStartAbortRef.current === controller) {
+            quickStartAbortRef.current = null;
+          }
+          if (!cancelled && screenActiveRef.current) {
+            setQuickStartComplete(true);
+          }
+        }
+      })();
+    }, delay);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [
+    cameraReady,
+    cameraPermission?.granted,
+    isBuddyActive,
+    quickStartRequested,
+    speakBuddyGuidance,
+  ]);
+
+  // test.html canonical akışı: kamera hazır olur olmaz, sonra her
+  // ANALYZE_INTERVAL_MS'de tek kare → /v1/assist event=buddy_frame.
+  // Voice turn veya TTS aktifken atla.
+  useEffect(() => {
+    if (!isBuddyActive) return;
+    if (!quickStartComplete) return;
     if (!hasAiApi()) return;
     if (!cameraPermission?.granted) return;
     if (!cameraReady) return;
 
     const tick = async () => {
+      if (!screenActiveRef.current) return;
       if (vlmInflightRef.current) return;
       if (ttsSpeakingRef.current) return;
       if (voiceFlowActiveRef.current) return;
       if (!cameraRef.current) return;
       vlmInflightRef.current = true;
+      const controller = new AbortController();
+      buddyFrameAbortRef.current = controller;
       try {
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.4,
           skipProcessing: true,
           shutterSound: false,
         });
+        if (!screenActiveRef.current || controller.signal.aborted) return;
         if (!photo?.uri) return;
         lastFrameUriRef.current = photo.uri;
         const recentGuidance = recentGuidanceRef.current.join('\n');
@@ -320,14 +456,20 @@ export default function BuddyMain() {
           lat: coordsRef.current?.lat,
           lon: coordsRef.current?.lon,
           recentGuidance,
+          signal: controller.signal,
         });
+        if (!screenActiveRef.current || controller.signal.aborted) return;
         const text = result.speak_text.trim();
         if (text && !voiceFlowActiveRef.current) {
           await speakBuddyGuidance(text);
         }
       } catch (err) {
+        if (isAbortError(err)) return;
         console.warn('[buddy] /v1/assist buddy_frame hata', err);
       } finally {
+        if (buddyFrameAbortRef.current === controller) {
+          buddyFrameAbortRef.current = null;
+        }
         vlmInflightRef.current = false;
       }
     };
@@ -335,8 +477,14 @@ export default function BuddyMain() {
     const id = setInterval(() => {
       void tick();
     }, ANALYZE_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [cameraReady, cameraPermission, speakBuddyGuidance]);
+    void tick();
+    return () => {
+      clearInterval(id);
+      buddyFrameAbortRef.current?.abort();
+      buddyFrameAbortRef.current = null;
+      vlmInflightRef.current = false;
+    };
+  }, [cameraReady, cameraPermission, isBuddyActive, quickStartComplete, speakBuddyGuidance]);
 
   useEffect(() => {
     glow.value = withRepeat(
