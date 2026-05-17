@@ -61,13 +61,3 @@ export const vlmSchemas = {
   sport: SportSchema,
   voice: VoiceAnswerSchema,
 };
-
-// TODO: VLM çağrı endpoint'i hackathon başında karar verilecek
-// (client → VLM | Supabase Edge Function | custom backend).
-// Spec §12 açık soru #1.
-export async function callVlm<T>(
-  _mode: 'buddy' | 'feedback' | 'sport',
-  _payload: unknown,
-): Promise<T> {
-  throw new Error('VLM endpoint henüz bağlanmadı — src/lib/vlm.ts');
-}

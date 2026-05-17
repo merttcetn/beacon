@@ -1,9 +1,21 @@
 import { Audio } from 'expo-av';
 import { File, Paths } from 'expo-file-system';
-import { AI_API_URL, assertAiApi, hasAiApi } from './aiApi';
+import { AI_API_URL, assertAiApi } from './aiApi';
 
 let currentSound: Audio.Sound | null = null;
 let requestId = 0;
+let audioModeInitialized = false;
+
+async function ensureAudioMode() {
+  if (audioModeInitialized) return;
+  await Audio.setAudioModeAsync({
+    playsInSilentModeIOS: true,
+    allowsRecordingIOS: true,
+    shouldDuckAndroid: true,
+    staysActiveInBackground: false,
+  });
+  audioModeInitialized = true;
+}
 
 const audioFileCache = new Map<string, string>();
 
@@ -60,16 +72,6 @@ function extensionForContentType(contentType: string | null): string {
   return 'mp3';
 }
 
-function simulatedSpeechMs(text: string): number {
-  return Math.min(5200, Math.max(1200, text.length * 55));
-}
-
-function finishSimulatedSpeech(activeRequest: number, text: string) {
-  setTimeout(() => {
-    if (activeRequest === requestId) emitTtsState(false);
-  }, simulatedSpeechMs(text));
-}
-
 async function fetchAudioFile(text: string): Promise<string> {
   const cached = audioFileCache.get(text);
   if (cached) return cached;
@@ -89,9 +91,15 @@ async function fetchAudioFile(text: string): Promise<string> {
     throw new Error(`/tts hata verdi (${response.status}): ${body.slice(0, 180)}`);
   }
 
+  const contentType = response.headers.get('content-type') ?? '';
+  if (contentType.toLowerCase().includes('application/json')) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(`/tts unavailable: ${JSON.stringify(payload).slice(0, 180)}`);
+  }
+
   const buffer = await response.arrayBuffer();
   const bytes = new Uint8Array(buffer);
-  const extension = extensionForContentType(response.headers.get('content-type'));
+  const extension = extensionForContentType(contentType);
 
   const file = new File(Paths.cache, `tts-${textHash(text)}.${extension}`);
   if (file.exists) file.delete();
@@ -118,19 +126,8 @@ export async function speakTts(text: string) {
   await unloadCurrentSound();
   emitTtsState(true);
 
-  // MOCK: Backend/TTS yokken demo kilitlenmesin; ekranda telefon konuşması ritmi sürsün.
-  if (!hasAiApi()) {
-    finishSimulatedSpeech(activeRequest, cleanText);
-    return;
-  }
-
   try {
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      allowsRecordingIOS: true,
-      shouldDuckAndroid: true,
-      staysActiveInBackground: false,
-    });
+    await ensureAudioMode();
 
     const audioUri = await fetchAudioFile(cleanText);
     if (activeRequest !== requestId) return;
@@ -155,8 +152,8 @@ export async function speakTts(text: string) {
     });
   } catch (error) {
     if (activeRequest === requestId) {
-      console.warn('[tts] AI /tts oynatılamadı:', error);
-      finishSimulatedSpeech(activeRequest, cleanText);
+      console.warn('[tts] /tts oynatılamadı, sessiz kalınıyor:', error);
+      emitTtsState(false);
     }
   }
 }

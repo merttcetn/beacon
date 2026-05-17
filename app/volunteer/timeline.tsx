@@ -54,47 +54,58 @@ export default function MyTickets() {
 
   return (
     <View style={styles.root}>
-      <SafeAreaView edges={['top']} style={styles.headerSafe}>
-        <View style={styles.headerRow}>
-          <Pressable
-            onPress={() => router.back()}
-            style={styles.iconBtn}
-            accessibilityRole="button"
-            accessibilityLabel="Kapat"
-            hitSlop={8}
-          >
-            <X size={18} color={colors.text.primary} strokeWidth={2.2} />
-          </Pressable>
-          <View style={styles.titleCol}>
-            <Text style={styles.kicker}>{kicker}</Text>
-            <Text style={styles.title}>ticket'larım</Text>
-          </View>
-          <Pressable onPress={changeRole} hitSlop={8} style={styles.roleBtn}>
-            <Text style={styles.roleLabel}>değiştir</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
+      <Pressable
+        style={styles.backdrop}
+        onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel="Kapat"
+      />
 
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {total === 0 ? (
-          <EmptyState progress={progress} />
-        ) : (
-          userTickets.map((t, i) => (
-            <TimelineRow
-              key={t.id}
-              ticket={t}
-              index={i}
-              isFirst={i === 0}
-              isLast={i === total - 1}
-              progress={progress}
-              onPress={() => router.push(`/volunteer/pin/${t.id}`)}
-            />
-          ))
-        )}
-      </ScrollView>
+      <View style={styles.sheet}>
+        <View style={styles.handle} />
+        <SafeAreaView edges={[]} style={styles.headerSafe}>
+          <View style={styles.headerRow}>
+            <Pressable
+              onPress={() => router.back()}
+              style={styles.iconBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Kapat"
+              hitSlop={8}
+            >
+              <X size={18} color={colors.text.primary} strokeWidth={2.2} />
+            </Pressable>
+            <View style={styles.titleCol}>
+              <Text style={styles.kicker}>{kicker}</Text>
+              <Text style={styles.title}>{"ticket'larım"}</Text>
+            </View>
+            <Pressable onPress={changeRole} hitSlop={8} style={styles.roleBtn}>
+              <Text style={styles.roleLabel}>değiştir</Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+
+        <ScrollView
+          style={styles.list}
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+        >
+          {total === 0 ? (
+            <EmptyState progress={progress} />
+          ) : (
+            userTickets.map((t, i) => (
+              <TimelineRow
+                key={t.id}
+                ticket={t}
+                index={i}
+                isFirst={i === 0}
+                isLast={i === total - 1}
+                progress={progress}
+                onPress={() => router.push(`/volunteer/pin/${t.id}`)}
+              />
+            ))
+          )}
+        </ScrollView>
+      </View>
     </View>
   );
 }
@@ -194,7 +205,36 @@ const DOT_HALO = 18;
 const DOT_INNER = 10;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg.primary },
+  root: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'transparent',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(17,23,31,0.28)',
+  },
+  sheet: {
+    height: '52%',
+    backgroundColor: colors.bg.primary,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#1A1D24',
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -10 },
+    elevation: 18,
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 42,
+    height: 5,
+    borderRadius: 99,
+    backgroundColor: colors.border.default,
+    marginTop: 10,
+    marginBottom: 2,
+  },
 
   headerSafe: {
     backgroundColor: colors.bg.primary,
@@ -208,6 +248,9 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     paddingBottom: 14,
     gap: 12,
+  },
+  list: {
+    flex: 1,
   },
   iconBtn: {
     width: 34,

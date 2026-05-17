@@ -18,23 +18,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
 import { PulseDot } from '@/components/PulseDot';
 import { Waveform } from '@/components/Waveform';
-import {
-  BUDDY_SCRIPTS,
-  SPORT_EQUIPMENTS,
-  WALK_DURATIONS,
-  type WalkDuration,
-} from '@/constants/buddyScripts';
+import { BUDDY_INTRO_TR } from '@/constants/buddyScripts';
 import { useBuddyVoice } from '@/hooks/useBuddyVoice';
 import { hasAiApi } from '@/lib/aiApi';
 import { analyzeBuddyFrame } from '@/lib/buddyVision';
-import type { BuddyCommand } from '@/lib/buddyCommands';
 import { speakTts, stopTts, subscribeTtsState } from '@/lib/tts';
-import type { ScreenContext } from '@/lib/voiceAsk';
 import { useUserStore } from '@/stores/userStore';
 import { colors, fontFamily } from '@/theme';
 
 const HOLD_DURATION_MS = 1000;
 const TICK_INTERVAL_MS = 125;
+const ANALYZE_INTERVAL_MS = 3000;
 const TICK_PATTERN: Haptics.ImpactFeedbackStyle[] = [
   Haptics.ImpactFeedbackStyle.Rigid,
   Haptics.ImpactFeedbackStyle.Rigid,
@@ -45,19 +39,6 @@ const TICK_PATTERN: Haptics.ImpactFeedbackStyle[] = [
   Haptics.ImpactFeedbackStyle.Heavy,
 ];
 
-type BuddyScene =
-  | { kind: 'mode_select' }
-  | { kind: 'walk_duration' }
-  | { kind: 'walk_active'; duration: WalkDuration }
-  | { kind: 'sport_navigating' }
-  | { kind: 'sport_equipment'; index: number }
-  | { kind: 'sport_done' };
-
-interface ChoiceChip {
-  label: string;
-  onPress: () => void;
-}
-
 const DEBUG_TAP_THRESHOLD = 3;
 const DEBUG_TAP_WINDOW_MS = 1500;
 const ONBOARDING_SWIPE_DISTANCE = -70;
@@ -67,18 +48,6 @@ function speak(text: string) {
   void speakTts(text);
 }
 
-function screenContextFor(sceneKind: BuddyScene['kind']): ScreenContext {
-  if (sceneKind === 'walk_active') return 'buddy_mode';
-  if (
-    sceneKind === 'sport_navigating' ||
-    sceneKind === 'sport_equipment' ||
-    sceneKind === 'sport_done'
-  ) {
-    return 'sport_mode';
-  }
-  return 'idle';
-}
-
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
 export default function BuddyMain() {
@@ -86,7 +55,6 @@ export default function BuddyMain() {
   const router = useRouter();
   const reset = useUserStore((s) => s.reset);
 
-  const [scene, setScene] = useState<BuddyScene>({ kind: 'mode_select' });
   const [lastSpoken, setLastSpoken] = useState<string>('');
   const [debugMode, setDebugMode] = useState(false);
   const [lastTranscript, setLastTranscript] = useState<string>('');
@@ -105,7 +73,6 @@ export default function BuddyMain() {
   const vlmInflightRef = useRef(false);
   const ttsSpeakingRef = useRef(false);
   const lastFrameUriRef = useRef<string | null>(null);
-  const scriptedWarningIndexRef = useRef(0);
 
   function cancelHold(silent = false) {
     if (holdTimer.current) {
@@ -167,43 +134,8 @@ export default function BuddyMain() {
     }, HOLD_DURATION_MS);
   }
 
-  const dispatchCommand = useCallback(
-    (cmd: BuddyCommand) => {
-      setScene((current) => {
-        if (cmd.kind === 'select_sport') return { kind: 'sport_navigating' };
-        if (cmd.kind === 'select_walk') return { kind: 'walk_duration' };
-        if (current.kind === 'walk_duration' && cmd.kind === 'walk_duration') {
-          return { kind: 'walk_active', duration: cmd.minutes };
-        }
-        if (current.kind === 'sport_equipment' && cmd.kind === 'next_equipment') {
-          const next = current.index + 1;
-          return next >= SPORT_EQUIPMENTS.length
-            ? { kind: 'sport_done' }
-            : { kind: 'sport_equipment', index: next };
-        }
-        if (current.kind === 'walk_active' && cmd.kind === 'stop') {
-          queueMicrotask(stopSession);
-          return current;
-        }
-        return current;
-      });
-    },
-    [stopSession],
-  );
-
-  const speakScriptedWalkWarning = useCallback(() => {
-    if (ttsSpeakingRef.current) return;
-    const warnings = BUDDY_SCRIPTS.walkWarnings;
-    const text = warnings[scriptedWarningIndexRef.current % warnings.length];
-    scriptedWarningIndexRef.current += 1;
-    setLastSpoken(text);
-    speak(text);
-  }, []);
-
   const { metering, isSpeaking } = useBuddyVoice({
-    sceneKind: scene.kind,
     enabled: voiceEnabled,
-    onCommand: dispatchCommand,
     onTranscript: (t) => setLastTranscript(t),
     onAssistantSpeech: (text) => setLastSpoken(text),
     onPermissionDenied: () => {
@@ -212,7 +144,6 @@ export default function BuddyMain() {
       setDebugMode(true);
     },
     getVoiceContext: () => ({
-      screenContext: screenContextFor(scene.kind),
       frameUri: lastFrameUriRef.current,
       lat: coordsRef.current?.lat,
       lon: coordsRef.current?.lon,
@@ -238,25 +169,11 @@ export default function BuddyMain() {
     }
   }
 
+  // Mount: tek seferlik karşılama.
   useEffect(() => {
-    let text = '';
-    if (scene.kind === 'mode_select') text = BUDDY_SCRIPTS.modeQuestion;
-    else if (scene.kind === 'walk_duration') text = BUDDY_SCRIPTS.walkDurationQuestion;
-    else if (scene.kind === 'walk_active') text = BUDDY_SCRIPTS.walkRouteFound(scene.duration);
-    else if (scene.kind === 'sport_navigating') text = BUDDY_SCRIPTS.sportSearching;
-    else if (scene.kind === 'sport_equipment') {
-      const eq = SPORT_EQUIPMENTS[scene.index];
-      text = scene.index === 0
-        ? `${BUDDY_SCRIPTS.sportArrived} ${eq.speakText}`
-        : `${BUDDY_SCRIPTS.sportNextCue} ${eq.speakText}`;
-    }
-    else if (scene.kind === 'sport_done') text = BUDDY_SCRIPTS.sportDone;
-
-    if (text) {
-      setLastSpoken(text);
-      speak(text);
-    }
-  }, [scene]);
+    setLastSpoken(BUDDY_INTRO_TR);
+    speak(BUDDY_INTRO_TR);
+  }, []);
 
   useEffect(() => {
     const unsub = subscribeTtsState((s) => {
@@ -265,8 +182,8 @@ export default function BuddyMain() {
     return unsub;
   }, []);
 
+  // Kamera + konum izinleri.
   useEffect(() => {
-    if (scene.kind !== 'walk_active') return;
     if (!hasAiApi()) return;
     let cancelled = false;
     (async () => {
@@ -302,16 +219,13 @@ export default function BuddyMain() {
     return () => {
       cancelled = true;
     };
-  }, [scene, cameraPermission, requestCameraPermission]);
+  }, [cameraPermission, requestCameraPermission]);
 
+  // Her 3 sn'de bir /buddy/analyze.
   useEffect(() => {
-    if (scene.kind !== 'walk_active') return;
-    if (!hasAiApi() || (cameraPermission && !cameraPermission.granted)) {
-      const id = setInterval(speakScriptedWalkWarning, 8000);
-      return () => clearInterval(id);
-    }
-    if (!cameraReady) return;
+    if (!hasAiApi()) return;
     if (!cameraPermission?.granted) return;
+    if (!cameraReady) return;
 
     const tick = async () => {
       if (vlmInflightRef.current) return;
@@ -335,12 +249,9 @@ export default function BuddyMain() {
         if (text) {
           setLastSpoken(text);
           speak(text);
-        } else {
-          speakScriptedWalkWarning();
         }
       } catch (err) {
         console.warn('[buddy] /buddy/analyze hata', err);
-        speakScriptedWalkWarning();
       } finally {
         vlmInflightRef.current = false;
       }
@@ -348,23 +259,9 @@ export default function BuddyMain() {
 
     const id = setInterval(() => {
       void tick();
-    }, 5000);
+    }, ANALYZE_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [scene, cameraReady, cameraPermission, speakScriptedWalkWarning]);
-
-  useEffect(() => {
-    if (scene.kind !== 'sport_navigating') return;
-    const id = setTimeout(() => {
-      setScene({ kind: 'sport_equipment', index: 0 });
-    }, 6000);
-    return () => clearTimeout(id);
-  }, [scene]);
-
-  useEffect(() => {
-    if (scene.kind !== 'walk_active') {
-      setCameraReady(false);
-    }
-  }, [scene]);
+  }, [cameraReady, cameraPermission]);
 
   useEffect(() => {
     glow.value = withRepeat(
@@ -385,28 +282,6 @@ export default function BuddyMain() {
     speak(lastSpoken);
   }
 
-  const choices: ChoiceChip[] = (() => {
-    if (!debugMode) return [];
-    if (scene.kind === 'mode_select') {
-      return [
-        { label: '1 · Spor', onPress: () => dispatchCommand({ kind: 'select_sport' }) },
-        { label: '2 · Yürüyüş', onPress: () => dispatchCommand({ kind: 'select_walk' }) },
-      ];
-    }
-    if (scene.kind === 'walk_duration') {
-      return WALK_DURATIONS.map((d) => ({
-        label: `${d} dk`,
-        onPress: () => dispatchCommand({ kind: 'walk_duration', minutes: d }),
-      }));
-    }
-    if (scene.kind === 'sport_equipment') {
-      return [
-        { label: 'Sıradaki hareket', onPress: () => dispatchCommand({ kind: 'next_equipment' }) },
-      ];
-    }
-    return [];
-  })();
-
   const stopEnabled = true;
 
   const progressFillStyle = useAnimatedStyle(() => ({
@@ -420,7 +295,7 @@ export default function BuddyMain() {
       edges={['top', 'left', 'right']}
       {...onboardingSwipe.panHandlers}
     >
-      {scene.kind === 'walk_active' && hasAiApi() && cameraPermission?.granted ? (
+      {hasAiApi() && cameraPermission?.granted ? (
         <CameraView
           ref={cameraRef}
           style={styles.hiddenCamera}
@@ -519,27 +394,10 @@ export default function BuddyMain() {
         </View>
 
         <View style={styles.ovalFooter} pointerEvents="box-none">
-          {choices.length > 0 ? (
-            <View style={styles.chipRow}>
-              {choices.map((c) => (
-                <Pressable
-                  key={c.label}
-                  onPress={c.onPress}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Sesli yanıt: ${c.label}`}
-                  style={({ pressed }) => [styles.chip, pressed && { opacity: 0.7 }]}
-                >
-                  <Ionicons name="mic-outline" size={13} color="#5BD4B9" />
-                  <Text style={styles.chipText}>{c.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.askRow}>
-              <Ionicons name="ear-outline" size={14} color="rgba(91,212,185,0.75)" />
-              <Text style={styles.askText}>Ekrana dokun → tekrar dinle</Text>
-            </View>
-          )}
+          <View style={styles.askRow}>
+            <Ionicons name="ear-outline" size={14} color="rgba(91,212,185,0.75)" />
+            <Text style={styles.askText}>Ekrana dokun → tekrar dinle</Text>
+          </View>
         </View>
       </Pressable>
 
@@ -649,18 +507,6 @@ const styles = StyleSheet.create({
   askText: {
     fontFamily: fontFamily.bodyMedium, fontSize: 14,
     color: 'rgba(91,212,185,0.75)', letterSpacing: 0.2,
-  },
-  chipRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 7,
-    paddingHorizontal: 13, paddingVertical: 9,
-    borderRadius: 99,
-    borderWidth: 1, borderColor: 'rgba(91,212,185,0.45)',
-    backgroundColor: 'rgba(91,212,185,0.08)',
-  },
-  chipText: {
-    fontFamily: fontFamily.bodyMedium, fontSize: 13.5,
-    color: '#F4F1EB', letterSpacing: 0.2,
   },
   stopWrap: { marginTop: 'auto', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 34 },
   stopBtn: {

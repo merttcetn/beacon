@@ -1,9 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import {
-  CameraView,
-  type CameraType,
-  useCameraPermissions,
-} from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -17,18 +13,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/Button';
-import { ShutterButton } from '@/components/camera/ShutterButton';
-import { SideButton } from '@/components/camera/SideButton';
 import { PulseDot } from '@/components/PulseDot';
 import { ANKARA_LANDMARKS } from '@/constants/region';
-import { colors, fontFamily, radius, spacing } from '@/theme';
+import { colors, fontFamily, spacing } from '@/theme';
 
 const FALLBACK_COORDS = ANKARA_LANDMARKS.odtuTeknokent;
 
 export default function FeedbackCamera() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
-  const [facing, setFacing] = useState<CameraType>('back');
   const [coords, setCoords] = useState<{ lat: number; lon: number }>({
     lat: FALLBACK_COORDS.latitude,
     lon: FALLBACK_COORDS.longitude,
@@ -101,11 +94,6 @@ export default function FeedbackCamera() {
     }
   }
 
-  function flip() {
-    Haptics.selectionAsync();
-    setFacing((f) => (f === 'back' ? 'front' : 'back'));
-  }
-
   // İzin akışı
   if (!permission) {
     return (
@@ -136,7 +124,7 @@ export default function FeedbackCamera() {
       <CameraView
         ref={camRef}
         style={StyleSheet.absoluteFill}
-        facing={facing}
+        facing="back"
       />
 
       {/* Kapat */}
@@ -180,37 +168,23 @@ export default function FeedbackCamera() {
 
       {/* Alt kontrol bar */}
       <View style={styles.bottomBar} pointerEvents="box-none">
-        <View style={styles.shutterRow}>
-          <SideButton
-            icon="images-outline"
-            onPress={() => {}}
-            accessibilityLabel="Galeri"
-            disabled
-            badge={{
-              value: 2,
-              bgColor: colors.status.partial,
-              textColor: colors.text.primary,
-              borderColor: colors.bg.deep,
-            }}
-          />
-          <ShutterButton
-            onPress={capture}
-            disabled={capturing}
-            ringColor={colors.bg.primary}
-            coreColor={colors.bg.primary}
-            accentColor={colors.accent.primary}
-            glowColor={colors.bg.primary}
-            recessedColor={colors.bg.deep}
-          />
-          <SideButton
-            icon="camera-reverse-outline"
-            onPress={flip}
-            accessibilityLabel="Kamerayı çevir"
-          />
-        </View>
-        <Text style={styles.helper}>
-          Shutter'a dokun → tek fotoğraf · konum otomatik eklenir
-        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Fotoğraf çek"
+          accessibilityState={{ disabled: capturing }}
+          disabled={capturing}
+          onPress={capture}
+          hitSlop={16}
+          style={({ pressed }) => [
+            styles.captureOuter,
+            pressed && styles.captureOuterPressed,
+            capturing && styles.captureOuterDisabled,
+          ]}
+        >
+          <View style={styles.captureCore}>
+            <View style={styles.captureDot} />
+          </View>
+        </Pressable>
       </View>
     </View>
   );
@@ -288,16 +262,25 @@ const styles = StyleSheet.create({
 
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    paddingTop: 22, paddingHorizontal: 24, paddingBottom: 34,
+    paddingTop: 26, paddingHorizontal: 24, paddingBottom: 40,
+    alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
-  shutterRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 8,
+  captureOuter: {
+    width: 84, height: 84, borderRadius: 999,
+    borderWidth: 2.5, borderColor: colors.bg.primary,
+    alignItems: 'center', justifyContent: 'center',
   },
-  helper: {
-    marginTop: 14, textAlign: 'center',
-    fontFamily: fontFamily.body, fontSize: 12.5,
-    color: 'rgba(255,255,255,0.75)',
+  captureOuterPressed: { transform: [{ scale: 0.94 }] },
+  captureOuterDisabled: { opacity: 0.5 },
+  captureCore: {
+    width: 64, height: 64, borderRadius: 999,
+    backgroundColor: colors.bg.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  captureDot: {
+    width: 5, height: 5, borderRadius: 99,
+    backgroundColor: colors.accent.primary,
+    opacity: 0.85,
   },
 });

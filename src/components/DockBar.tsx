@@ -1,16 +1,36 @@
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
-import { Plus, Ticket } from 'lucide-react-native';
+import { Navigation, Plus, Ticket } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fontFamily } from '@/theme';
 
-export function DockBar() {
+interface DockBarProps {
+  onRecenter?: () => void;
+}
+
+export function DockBar({ onRecenter }: DockBarProps) {
   const router = useRouter();
 
   return (
     <SafeAreaView edges={['bottom']} style={styles.safe} pointerEvents="box-none">
       <View style={styles.row} pointerEvents="box-none">
+        {onRecenter ? (
+          <Pressable
+            style={({ pressed }) => [styles.fab, styles.fabLeft, pressed && styles.fabPressed]}
+            onPress={onRecenter}
+            accessibilityRole="button"
+            accessibilityLabel="Konumuma git"
+          >
+            <Navigation
+              size={22}
+              color={colors.text.inverse}
+              strokeWidth={2.4}
+              fill={colors.text.inverse}
+            />
+          </Pressable>
+        ) : null}
+
         <BlurView
           intensity={82}
           tint="light"
@@ -30,7 +50,7 @@ export function DockBar() {
         </BlurView>
 
         <Pressable
-          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+          style={({ pressed }) => [styles.fab, styles.fabRight, pressed && styles.fabPressed]}
           onPress={() => router.push('/volunteer/feedback')}
           accessibilityRole="button"
           accessibilityLabel="Problem bildir"
@@ -104,7 +124,6 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    right: 20,
     bottom: 16,
     width: 56,
     height: 56,
@@ -120,6 +139,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 6,
   },
+  fabRight: { right: 20 },
+  fabLeft: { left: 20 },
   fabPressed: {
     opacity: 0.85,
     transform: [{ scale: 0.94 }],

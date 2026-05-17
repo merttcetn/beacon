@@ -6,31 +6,20 @@ import {
   useAudioRecorderState,
 } from 'expo-audio';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BUDDY_SCRIPTS } from '@/constants/buddyScripts';
-import {
-  defaultCommandFor,
-  parseCommand,
-  type BuddyCommand,
-  type BuddySceneKind,
-} from '@/lib/buddyCommands';
-import { hasAiApi } from '@/lib/aiApi';
 import { speakTts, subscribeTtsState } from '@/lib/tts';
 import { transcribeAudio, VAD_CONFIG } from '@/lib/stt';
-import { askVoice, type ScreenContext } from '@/lib/voiceAsk';
+import { askVoice } from '@/lib/voiceAsk';
 
 type VoiceState = 'idle' | 'speaking';
 
 export interface VoiceContext {
-  screenContext: ScreenContext;
   frameUri?: string | null;
   lat?: number | null;
   lon?: number | null;
 }
 
 interface UseBuddyVoiceArgs {
-  sceneKind: BuddySceneKind;
   enabled: boolean;
-  onCommand: (cmd: BuddyCommand) => void;
   onTranscript?: (text: string) => void;
   onListeningChange?: (listening: boolean) => void;
   onPermissionDenied?: () => void;
@@ -38,25 +27,8 @@ interface UseBuddyVoiceArgs {
   getVoiceContext?: () => VoiceContext | Promise<VoiceContext>;
 }
 
-function mockTranscriptFor(sceneKind: BuddySceneKind): string | null {
-  if (sceneKind === 'mode_select') return 'spor';
-  if (sceneKind === 'walk_duration') return 'yirmi dakika';
-  if (sceneKind === 'sport_equipment') return 'sıradaki hareket';
-  if (sceneKind === 'walk_active') return 'önümde ne var';
-  return null;
-}
-
-function mockAnswerFor(sceneKind: BuddySceneKind): string | null {
-  if (sceneKind === 'walk_active') return BUDDY_SCRIPTS.walkWarnings[0];
-  if (sceneKind === 'sport_navigating') return BUDDY_SCRIPTS.sportSearching;
-  if (sceneKind === 'sport_done') return BUDDY_SCRIPTS.sportDone;
-  return null;
-}
-
 export function useBuddyVoice({
-  sceneKind,
   enabled,
-  onCommand,
   onTranscript,
   onListeningChange,
   onPermissionDenied,
@@ -76,23 +48,12 @@ export function useBuddyVoice({
   const aboveThresholdMs = useRef(0);
   const silenceMs = useRef(0);
   const segmentMs = useRef(0);
-  const failureCount = useRef(0);
-  const sceneKindRef = useRef(sceneKind);
   const enabledRef = useRef(enabled);
   const isTranscribing = useRef(false);
   const permissionGranted = useRef(false);
   const recorderReady = useRef(false);
 
-  sceneKindRef.current = sceneKind;
   enabledRef.current = enabled;
-
-  useEffect(() => {
-    failureCount.current = 0;
-    voiceState.current = 'idle';
-    aboveThresholdMs.current = 0;
-    silenceMs.current = 0;
-    segmentMs.current = 0;
-  }, [sceneKind]);
 
   useEffect(() => {
     const unsub = subscribeTtsState((speaking) => {
@@ -143,72 +104,32 @@ export function useBuddyVoice({
       await recorder.stop();
       const uri = recorder.uri;
       if (!uri) {
-        isTranscribing.current = false;
-        if (enabledRef.current) await startRecording();
         return;
       }
-      const sk = sceneKindRef.current;
       let transcript = '';
       try {
         transcript = await transcribeAudio(uri);
       } catch (err) {
-        console.warn('[voice] /stt fail, mock transcript kullanılıyor', err);
+        console.warn('[voice] /stt fail', err);
       }
-      if (!transcript) {
-        // MOCK: Servis yoksa kullanıcı gerçekten konuşmuş gibi sahneye uygun cevap üret.
-        transcript = mockTranscriptFor(sk) ?? '';
-      }
-      if (transcript) onTranscript?.(transcript);
+      if (!transcript) return;
 
-      const cmd = parseCommand(transcript, sk);
-      if (cmd) {
-        failureCount.current = 0;
-        onCommand(cmd);
-      } else if (transcript) {
-        let aiHandled = false;
-        if (getVoiceContext && hasAiApi()) {
-          try {
-            const ctx = await getVoiceContext();
-            const answer = await askVoice({
-              transcript,
-              screenContext: ctx.screenContext,
-              frameUri: ctx.frameUri,
-              lat: ctx.lat,
-              lon: ctx.lon,
-            });
-            const reply = answer.answer_speak_text.trim();
-            if (reply) {
-              failureCount.current = 0;
-              await speakAssistant(reply);
-              aiHandled = true;
-            }
-            if (answer.requires_action === 'switch_to_sport') {
-              onCommand({ kind: 'select_sport' });
-            } else if (answer.requires_action === 'switch_to_buddy') {
-              onCommand({ kind: 'select_walk' });
-            }
-          } catch (err) {
-            console.warn('[voice] /voice/ask fail', err);
-          }
-        }
-        if (!aiHandled) {
-          const mockAnswer = mockAnswerFor(sk);
-          if (mockAnswer) {
-            failureCount.current = 0;
-            await speakAssistant(mockAnswer);
-            aiHandled = true;
-          }
-        }
-        if (!aiHandled) {
-          failureCount.current += 1;
-          if (failureCount.current === 1) {
-            await speakAssistant('Anlayamadım, tekrar söyler misiniz?');
-          } else {
-            const fallback = defaultCommandFor(sk);
-            failureCount.current = 0;
-            if (fallback) onCommand(fallback);
-          }
-        }
+      onTranscript?.(transcript);
+
+      if (!getVoiceContext) return;
+      try {
+        const ctx = await getVoiceContext();
+        const answer = await askVoice({
+          transcript,
+          screenContext: 'buddy_mode',
+          frameUri: ctx.frameUri,
+          lat: ctx.lat,
+          lon: ctx.lon,
+        });
+        const reply = answer.answer_speak_text.trim();
+        if (reply) await speakAssistant(reply);
+      } catch (err) {
+        console.warn('[voice] /voice/ask fail', err);
       }
     } catch (err) {
       console.warn('[voice] utterance handling failed', err);
@@ -226,7 +147,6 @@ export function useBuddyVoice({
     }
   }, [
     recorder,
-    onCommand,
     onTranscript,
     onListeningChange,
     startRecording,
@@ -241,7 +161,6 @@ export function useBuddyVoice({
       const perm = await requestRecordingPermissionsAsync();
       if (cancelled) return;
       if (!perm.granted) {
-        await speakAssistant(BUDDY_SCRIPTS.micPermissionDenied);
         onPermissionDenied?.();
         return;
       }
@@ -261,7 +180,7 @@ export function useBuddyVoice({
       setListening(false);
       onListeningChange?.(false);
     };
-  }, [enabled, recorder, startRecording, onListeningChange, onPermissionDenied, speakAssistant]);
+  }, [enabled, recorder, startRecording, onListeningChange, onPermissionDenied]);
 
   useEffect(() => {
     if (!enabled) return;

@@ -3,9 +3,11 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { nanoid } from 'nanoid/non-secure';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +16,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { hasAiApi } from '@/lib/aiApi';
+import { categorizeFeedback } from '@/lib/feedbackCategorize';
 import { submitTicketReport } from '@/lib/n8n';
 import { useTicketStore } from '@/stores/ticketStore';
 import { useUserStore } from '@/stores/userStore';
@@ -97,15 +101,46 @@ export default function NewTicket() {
   const lon = params.lon ? Number(params.lon) : 32.7559;
   const photoUri = params.photoUri;
 
-  // VLM mock varsayılanları (sabit). Kullanıcı düzenleyebilir.
-  const [category, setCategory] = useState<IssueType>('missing_ramp');
-  const [severity, setSeverity] = useState<Severity>('high');
-  const [affected, setAffected] = useState<Set<AffectedUser>>(
-    () => new Set(['wheelchair', 'visually_impaired']),
-  );
+  // AI tespit gelene kadar boş başlat. /feedback/categorize sonra doldurur.
+  const [category, setCategory] = useState<IssueType>('other');
+  const [severity, setSeverity] = useState<Severity>('medium');
+  const [affected, setAffected] = useState<Set<AffectedUser>>(() => new Set());
   const [description, setDescription] = useState('');
+  const [ticketName, setTicketName] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [submitPhase, setSubmitPhase] = useState<SubmitPhase>({ kind: 'idle' });
+  const [aiCategorizing, setAiCategorizing] = useState(false);
+  const [aiConfidence, setAiConfidence] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!photoUri) return;
+    if (!hasAiApi()) return;
+    let cancelled = false;
+    setAiCategorizing(true);
+    (async () => {
+      try {
+        const result = await categorizeFeedback([photoUri]);
+        if (cancelled) return;
+        const issue = result.issues[0];
+        if (issue && result.has_damage) {
+          const cat = CATEGORIES.find((c) => c.id === issue.type) ?? CATEGORIES[0];
+          setCategory(issue.type);
+          setSeverity(issue.severity);
+          setAffected(new Set(issue.affected_users));
+          setDescription(issue.description_tr);
+          setTicketName(cat.label);
+          setAiConfidence(issue.confidence);
+        }
+      } catch (err) {
+        console.warn('[ticket] /feedback/categorize fail', err);
+      } finally {
+        if (!cancelled) setAiCategorizing(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [photoUri]);
 
   const currentCat = useMemo(
     () => CATEGORIES.find((c) => c.id === category) ?? CATEGORIES[0],
@@ -133,6 +168,7 @@ export default function NewTicket() {
     // Lokal kayıt (mevcut davranış) — n8n başarısız olsa bile korunur
     const ticket: Ticket = {
       id: nanoid(12),
+      title: ticketName.trim() || undefined,
       created_by: 'demo-volunteer',
       location: { latitude: lat, longitude: lon },
       issue_type: category,
@@ -140,7 +176,7 @@ export default function NewTicket() {
       affected_users: Array.from(affected),
       description_tr: transcript,
       photo_urls: photoUri ? [photoUri] : [],
-      confidence: 0.85,
+      confidence: aiConfidence ?? 0.5,
       source: 'user_volunteer',
       verification_count: 1,
       verified: false,
@@ -162,7 +198,7 @@ export default function NewTicket() {
               severity,
               affected_users: Array.from(affected),
               description_tr: transcript,
-              confidence: 0.85,
+              confidence: aiConfidence ?? 0.5,
             },
           ],
           overall_accessibility_score: SCORE_FROM_SEVERITY[severity],
@@ -185,7 +221,10 @@ export default function NewTicket() {
   }
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <SafeAreaView edges={['top']} style={styles.headerSafe}>
         <View style={styles.headerRow}>
           <Pressable
@@ -196,12 +235,19 @@ export default function NewTicket() {
           >
             <Ionicons name="chevron-back" size={20} color={colors.text.primary} />
           </Pressable>
-          <Text style={styles.headerTitle}>Yeni Ticket</Text>
+          <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+            {ticketName.trim() || 'Yeni Ticket'}
+          </Text>
           <View style={styles.headerBack} />
         </View>
       </SafeAreaView>
 
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+      >
         {/* Hero photo */}
         <View style={styles.heroWrap}>
           {photoUri ? (
@@ -214,10 +260,34 @@ export default function NewTicket() {
           )}
         </View>
 
+        {/* Ticket adı */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>TICKET ADI</Text>
+          <View style={styles.titleInputWrap}>
+            <Ionicons name="pricetag-outline" size={16} color={colors.text.tertiary} />
+            <TextInput
+              value={ticketName}
+              onChangeText={setTicketName}
+              placeholder="örn. Sosyal Bilimler önü rampa"
+              placeholderTextColor={colors.text.tertiary}
+              maxLength={80}
+              returnKeyType="done"
+              style={styles.titleInput}
+            />
+          </View>
+        </View>
+
         {/* VLM tespit kartı */}
         <View style={styles.detectCard}>
           <View style={styles.detectHead}>
-            <Text style={styles.detectLabel}>VLM TESPİTİ · DÜZENLENEBİLİR</Text>
+            {aiCategorizing ? (
+              <View style={styles.detectLoadingRow}>
+                <ActivityIndicator size="small" color={colors.accent.primary} />
+                <Text style={styles.detectLabel}>AI TESPİT EDİYOR…</Text>
+              </View>
+            ) : (
+              <Text style={styles.detectLabel}>VLM TESPİTİ · DÜZENLENEBİLİR</Text>
+            )}
             <View
               style={[
                 styles.severityBadge,
@@ -324,7 +394,11 @@ export default function NewTicket() {
         {/* Etkilenen kullanıcılar */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>ETKİLENEN KULLANICILAR</Text>
-          <View style={styles.affRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.affScroll}
+          >
             {AFFECTED.map((a) => {
               const active = affected.has(a.id);
               return (
@@ -358,7 +432,7 @@ export default function NewTicket() {
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
         </View>
 
         {/* Konum kartı */}
@@ -442,7 +516,7 @@ export default function NewTicket() {
           )}
         </Pressable>
       </SafeAreaView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -518,6 +592,11 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     color: colors.text.tertiary,
     letterSpacing: 1.2,
+  },
+  detectLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   severityBadge: {
     paddingHorizontal: 8,
@@ -613,7 +692,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.3,
   },
 
-  affRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  affScroll: { gap: 8, paddingRight: spacing.s4 },
   affChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -669,6 +748,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text.primary,
     textAlignVertical: 'top',
+  },
+
+  titleInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.bg.elevated,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  titleInput: {
+    flex: 1,
+    fontFamily: fontFamily.display,
+    fontSize: 16,
+    color: colors.text.primary,
+    letterSpacing: -0.2,
+    padding: 0,
   },
 
   submitSafe: {

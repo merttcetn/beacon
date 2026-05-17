@@ -36,6 +36,7 @@ export interface User {
 
 export interface Ticket {
   id: string;
+  title?: string;
   created_by: string;
   location: { latitude: number; longitude: number };
   issue_type: IssueType;
