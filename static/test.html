@@ -3,152 +3,208 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>AI Servisi — Test Konsolu</title>
+<title>Sesli Rehber — AI Simülatörü</title>
 <style>
-  body { font-family: system-ui, -apple-system, sans-serif; max-width: 760px;
-         margin: 0 auto; padding: 1rem 1.2rem 4rem; background: #0f1115; color: #e8e8e8; }
-  h1 { font-size: 1.3rem; }
-  p.muted, .muted { color: #9aa4b2; font-size: .85rem; }
-  section { background: #1a1d24; border: 1px solid #2a2e38; border-radius: 10px;
+  :root { color-scheme: dark; }
+  body { font-family: system-ui, -apple-system, sans-serif; max-width: 860px;
+         margin: 0 auto; padding: 1rem 1.2rem 5rem; background: #0f1115; color: #e8e8e8; }
+  h1 { font-size: 1.35rem; margin: 0 0 .2rem; }
+  h2 { font-size: 1.05rem; margin: 0 0 .5rem; }
+  p.muted, .muted { color: #9aa4b2; font-size: .84rem; }
+  code { background: #232733; padding: .05rem .3rem; border-radius: 4px; font-size: .85em; }
+  section { background: #1a1d24; border: 1px solid #2a2e38; border-radius: 12px;
             padding: 1rem 1.1rem; margin: 1rem 0; }
-  h2 { font-size: 1.05rem; margin: 0 0 .6rem; }
-  label { display: block; font-size: .82rem; margin: .55rem 0 .2rem; color: #9aa4b2; }
-  input, select, textarea, button { font-size: 1rem; padding: .5rem .6rem;
-    border-radius: 6px; border: 1px solid #3a3f4b; background: #10131a; color: #e8e8e8; }
-  textarea { width: 100%; box-sizing: border-box; }
+  section.hero { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb33; }
+  label { display: block; font-size: .8rem; margin: .6rem 0 .2rem; color: #9aa4b2; }
+  input, select, textarea, button { font-size: .95rem; padding: .5rem .6rem;
+    border-radius: 7px; border: 1px solid #3a3f4b; background: #10131a; color: #e8e8e8; }
+  textarea, input[type=text] { width: 100%; box-sizing: border-box; }
   button { background: #2563eb; border: none; cursor: pointer; font-weight: 600; }
   button:hover { background: #1d4ed8; }
+  button:disabled { background: #374151; cursor: not-allowed; opacity: .6; }
   button.sec { background: #374151; }
   button.rec { background: #b91c1c; }
   .row { display: flex; gap: .7rem; flex-wrap: wrap; align-items: flex-end; }
+  .actions { margin-top: .7rem; display: flex; gap: .5rem; flex-wrap: wrap; }
   .out { white-space: pre-wrap; background: #0b0d12; border: 1px solid #2a2e38;
-         border-radius: 6px; padding: .7rem; margin-top: .6rem; font-size: .88rem;
+         border-radius: 7px; padding: .7rem; margin-top: .6rem; font-size: .84rem;
          min-height: 1.2rem; }
-  .actions { margin-top: .6rem; display: flex; gap: .5rem; flex-wrap: wrap; }
-  video { width: 100%; max-height: 340px; margin-top: .6rem; border-radius: 8px;
-          background: #000; }
-  .frame { display: flex; gap: .6rem; background: #0b0d12; border: 1px solid #2a2e38;
-           border-radius: 8px; padding: .5rem; margin: .4rem 0; }
-  .frame img { width: 150px; height: auto; border-radius: 4px; flex-shrink: 0;
-               align-self: flex-start; }
-  .frame .info { font-size: .86rem; }
-  .frame .res { margin-top: .3rem; color: #cdd5e0; }
-  .badge { display: inline-block; padding: .06rem .45rem; border-radius: 4px;
-           font-size: .72rem; font-weight: 700; }
-  .badge.proc { background: #b45309; }
-  .badge.done { background: #15803d; }
-  .badge.err  { background: #b91c1c; }
+  video { width: 100%; max-height: 320px; margin-top: .6rem; border-radius: 9px; background: #000; }
+  /* status dot */
+  .dot { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%;
+         background: #6b7280; margin-right: .35rem; vertical-align: middle; }
+  .dot.ok { background: #15803d; } .dot.err { background: #b91c1c; }
+  /* mode bar */
+  .modebar { margin: .7rem 0 .2rem; padding: .45rem .7rem; border-radius: 7px;
+             background: #11203a; border: 1px solid #2563eb55; font-weight: 600; font-size: .9rem; }
+  .modebar.sport { background: #3a2a11; border-color: #b4530955; }
+  /* ask bar */
+  .askbar { display: flex; gap: .5rem; margin-top: .7rem; }
+  .askbar input { flex: 1; }
+  /* timeline cards */
+  #timeline { margin-top: .8rem; }
+  .card { display: flex; gap: .7rem; background: #0b0d12; border: 1px solid #2a2e38;
+          border-radius: 9px; padding: .6rem .7rem; margin: .45rem 0; }
+  .card.voice { border-color: #2563eb66; }
+  .card img { width: 96px; height: auto; border-radius: 5px; flex-shrink: 0; align-self: flex-start; }
+  .card .body { flex: 1; min-width: 0; }
+  .card .speak { margin: .35rem 0; color: #e8e8e8; line-height: 1.35; }
+  .card .speak.silent { color: #6b7280; font-style: italic; }
+  .card .meta { font-size: .76rem; color: #9aa4b2; }
+  .badges { display: flex; gap: .3rem; flex-wrap: wrap; align-items: center; }
+  .badge { display: inline-block; padding: .08rem .45rem; border-radius: 5px;
+           font-size: .68rem; font-weight: 700; letter-spacing: .02em; }
+  .b-ev    { background: #374151; }
+  .b-ev.voice { background: #2563eb; }
+  .b-intent { background: #1f2937; border: 1px solid #3a3f4b; }
+  .b-low    { background: #374151; }
+  .b-medium { background: #b45309; }
+  .b-high   { background: #c2410c; }
+  .b-critical { background: #b91c1c; }
+  .b-act { background: #6d28d9; }
+  .b-proc { background: #1f2937; color: #9aa4b2; }
+  .b-err  { background: #b91c1c; }
+  .ticketbox { margin-top: .4rem; padding: .45rem .6rem; border-radius: 7px;
+               background: #1a142b; border: 1px solid #6d28d966; font-size: .8rem; }
+  .ticketbox b { color: #c4b5fd; }
+  details { margin-top: .35rem; }
+  summary { cursor: pointer; font-size: .78rem; color: #9aa4b2; }
+  details pre { white-space: pre-wrap; font-size: .74rem; background: #08090d;
+                padding: .5rem; border-radius: 6px; margin: .3rem 0 0; }
+  .hr { border: 0; border-top: 1px solid #2a2e38; margin: 1.2rem 0; }
 </style>
 </head>
 <body>
-<h1>🦮 AI Servisi — Test Konsolu</h1>
-<p class="muted">Her endpoint'i gerçek fotoğraf/ses ile test et. Çıktılar server-side TTS ile seslendirilir.</p>
+<h1>🦮 Sesli Rehber — AI Simülatörü</h1>
+<p class="muted"><span class="dot" id="svcDot"></span><span id="svcText">Servis kontrol ediliyor…</span>
+  &nbsp;·&nbsp; Tüm akış tek endpoint: <code>/v1/assist</code></p>
 
+<!-- ============ HERO: CANLI SİMÜLASYON ============ -->
+<section class="hero">
+  <h2>🎬 Canlı Simülasyon</h2>
+  <p class="muted">Gerçek uygulama akışı. Video = telefon kamerası. Her N saniyede kare
+    <code>event=buddy_frame</code> olarak orchestrator'a gider; istediğin an sesli soru sor →
+    <code>event=voice</code>. Yanıtlar timeline'da görünür ve sesli okunur.</p>
+
+  <label>Yürüyüş videosu (.mov / .mp4)</label>
+  <input type="file" id="simVideoFile" accept="video/*" />
+  <div class="row">
+    <div><label>Kare aralığı (sn)</label>
+      <input type="number" id="simInterval" value="5" min="2" style="width:5rem" /></div>
+    <div><label><input type="checkbox" id="simTTS" checked /> Sesli oku (TTS)</label></div>
+  </div>
+  <label>nearby_tickets — UI'nin gönderdiği çevre ticket'ları (JSON dizi)</label>
+  <textarea id="simNearby" rows="2">[{"issue_type":"pothole","severity":"high","description_tr":"Derin çukur var.","distance_m":18},{"issue_type":"missing_ramp","severity":"medium","description_tr":"Rampa eksik.","distance_m":45}]</textarea>
+
+  <div class="modebar" id="modeBar">🚶 Aktif mod: <b>Buddy</b></div>
+  <div class="actions">
+    <button id="simStart" onclick="startSim()">▶ Simülasyonu Başlat</button>
+    <button class="sec" id="simStop" onclick="stopSim()" disabled>⏹ Durdur</button>
+  </div>
+  <video id="simVideo" controls playsinline style="display:none"></video>
+
+  <div class="askbar">
+    <input type="text" id="simAskText"
+      placeholder="Sesli soru yaz: 'önümde ne var', 'bu aleti anlat', 'bunu bildir', 'spor moduna geç'…" />
+    <button onclick="simAskTyped()">Sor</button>
+    <button class="sec" id="simMicBtn" onclick="simMicToggle()">🎙</button>
+  </div>
+  <div id="simStatus" class="muted" style="margin-top:.5rem"></div>
+  <div id="timeline"></div>
+</section>
+
+<!-- ============ ORCHESTRATOR — TEK İSTEK ============ -->
 <section>
-  <h2>🎛️ Orchestrator — <code>/v1/assist</code></h2>
+  <h2>🎛️ Orchestrator — Tek İstek <code>/v1/assist</code></h2>
+  <p class="muted">İzole tek çağrı. Niyet sınıflandırma + dispatch'i tek tek denemek için.</p>
   <label>Sesli ifade — yaz ya da mikrofonla kaydet</label>
   <textarea id="askText" rows="2">Bu aleti anlat</textarea>
   <div class="row">
+    <div><label>event</label>
+      <select id="askEvent"><option>voice</option><option>buddy_frame</option></select></div>
     <div><label>screen_context</label>
-      <select id="askCtx">
-        <option>idle</option><option>buddy_mode</option><option>sport_mode</option>
-      </select>
-    </div>
+      <select id="askCtx"><option>idle</option><option>buddy_mode</option><option>sport_mode</option></select></div>
     <div><label>Frame (opsiyonel)</label><input type="file" id="askFrame" accept="image/*" /></div>
   </div>
-  <label>nearby_tickets (JSON dizi — UI'nin gönderdiği çevre ticket'ları simülasyonu)</label>
-  <textarea id="askNearby" rows="3">[{"issue_type":"pothole","severity":"high","description_tr":"Derin çukur var.","distance_m":18}]</textarea>
+  <label>nearby_tickets (JSON dizi)</label>
+  <textarea id="askNearby" rows="2">[{"issue_type":"pothole","severity":"high","description_tr":"Derin çukur var.","distance_m":18}]</textarea>
   <div class="actions">
-    <button onclick="assist()">Gönder</button>
-    <button class="sec" id="assistRec" onclick="toggleAssistRecord()">🎙 Kaydet</button>
-    <button class="sec" id="assistListen" style="display:none" onclick="playTTS(lastSpeak.assist)">🔊 Dinle</button>
+    <button onclick="assistManual()">Gönder</button>
+    <button class="sec" id="askMicBtn" onclick="askMicToggle()">🎙 Kaydet</button>
+    <button class="sec" id="askListen" style="display:none" onclick="playTTS(lastSpeak.ask)">🔊 Dinle</button>
   </div>
-  <div id="assistRecStatus" class="muted" style="margin-top:.4rem"></div>
-  <div class="out" id="assistOut"></div>
+  <div id="askRecStatus" class="muted" style="margin-top:.4rem"></div>
+  <div class="out" id="askOut"></div>
 </section>
 
-<section>
-  <h2>Buddy Mode — <code>/v1/buddy</code></h2>
-  <label>Kare — kaldırım / sokak fotoğrafı</label>
-  <input type="file" id="buddyFrame" accept="image/*" />
-  <div class="row">
-    <div><label>lat</label><input id="buddyLat" value="40.9905" size="11" /></div>
-    <div><label>lon</label><input id="buddyLon" value="29.0270" size="11" /></div>
-  </div>
-  <p class="muted">Varsayılan konum = Kadıköy seed kümesi (known_issues testi için).</p>
-  <div class="actions">
-    <button onclick="buddy()">Analiz Et</button>
-    <button class="sec" id="buddyListen" style="display:none" onclick="playTTS(lastSpeak.buddy)">🔊 Dinle</button>
-  </div>
-  <div class="out" id="buddyOut"></div>
-</section>
+<!-- ============ TEKİL ENDPOINT TESTLERİ ============ -->
+<details>
+  <summary style="font-size:1rem;font-weight:600;color:#e8e8e8;margin:.5rem 0">
+    🔧 Tekil Endpoint Testleri (izole kalite testi)</summary>
 
-<section>
-  <h2>Buddy Mode — Video — gerçek zamanlı simülasyon</h2>
-  <label>Yürüyüş videosu (.mov / .mp4)</label>
-  <input type="file" id="videoFile" accept="video/*" />
-  <div class="row">
-    <div><label>Kare aralığı (sn)</label><input id="videoInterval" type="number" value="5" min="1" size="4" /></div>
-    <div><label><input type="checkbox" id="videoTTS" checked /> Sesli oku</label></div>
-  </div>
-  <p class="muted">Video oynatılır; her N saniyede o anki kare yakalanır → <code>/v1/buddy</code> → sesli okunur.
-    Her kare için tam süreç görünür: <b>VLM süresi + TTS süresi + toplam latency</b>. Saf kare analizi
-    (seed yok). Son birkaç <code>speak_text</code> bir sonraki kareye <code>recent_guidance</code>
-    olarak geçer — model tekrarı önler. En yeni kare en üstte.</p>
-  <div class="actions"><button onclick="startVideoSim()">Başlat</button></div>
-  <video id="videoPlayer" controls playsinline style="display:none"></video>
-  <div id="videoStatus" class="muted" style="margin-top:.5rem"></div>
-  <div id="videoLog"></div>
-</section>
-
-<section>
-  <h2>Voice Q&amp;A — <code>/v1/voice</code> + <code>/v1/speech/transcribe</code></h2>
-  <label>Soru — yaz ya da mikrofonla kaydet (kayıt varsa fal.ai Scribe ile transkript edilir)</label>
-  <textarea id="voiceQ" rows="2">Önümde ne var?</textarea>
-  <div class="row">
-    <div><label>screen_context</label>
-      <select id="voiceCtx">
-        <option>idle</option><option>buddy_mode</option><option>sport_mode</option>
-      </select>
+  <section>
+    <h2>Buddy — <code>/v1/buddy</code></h2>
+    <label>Kare fotoğrafı</label>
+    <input type="file" id="buddyFrame" accept="image/*" />
+    <div class="row">
+      <div><label>lat</label><input type="text" id="buddyLat" value="40.9905" style="width:8rem" /></div>
+      <div><label>lon</label><input type="text" id="buddyLon" value="29.0270" style="width:8rem" /></div>
     </div>
-    <div><label>Frame (opsiyonel)</label><input type="file" id="voiceFrame" accept="image/*" /></div>
-  </div>
-  <div class="actions">
-    <button onclick="voice()">Sor</button>
-    <button class="sec" id="recBtn" onclick="toggleRecord()">🎙 Kaydet</button>
-    <button class="sec" id="voiceListen" style="display:none" onclick="playTTS(lastSpeak.voice)">🔊 Dinle</button>
-  </div>
-  <div id="recStatus" class="muted" style="margin-top:.4rem"></div>
-  <div class="out" id="voiceOut"></div>
-</section>
+    <div class="actions">
+      <button onclick="tBuddy()">Analiz Et</button>
+      <button class="sec" id="buddyListen" style="display:none" onclick="playTTS(lastSpeak.buddy)">🔊 Dinle</button>
+    </div>
+    <div class="out" id="buddyOut"></div>
+  </section>
 
-<section>
-  <h2>Feedback — <code>/v1/feedback</code></h2>
-  <label>1-3 problem fotoğrafı (çukur, bozuk rampa, engel...)</label>
-  <input type="file" id="fbPhotos" accept="image/*" multiple />
-  <div class="actions"><button onclick="feedback()">Kategorize Et</button></div>
-  <div class="out" id="fbOut"></div>
-</section>
+  <section>
+    <h2>Voice — <code>/v1/voice</code> + <code>/v1/speech/transcribe</code></h2>
+    <label>Soru — yaz ya da mikrofonla kaydet</label>
+    <textarea id="voiceQ" rows="2">Önümde ne var?</textarea>
+    <div class="row">
+      <div><label>screen_context</label>
+        <select id="voiceCtx"><option>idle</option><option>buddy_mode</option><option>sport_mode</option></select></div>
+      <div><label>Frame (opsiyonel)</label><input type="file" id="voiceFrame" accept="image/*" /></div>
+    </div>
+    <div class="actions">
+      <button onclick="tVoice()">Sor</button>
+      <button class="sec" id="voiceMicBtn" onclick="voiceMicToggle()">🎙 Kaydet</button>
+      <button class="sec" id="voiceListen" style="display:none" onclick="playTTS(lastSpeak.voice)">🔊 Dinle</button>
+    </div>
+    <div id="voiceRecStatus" class="muted" style="margin-top:.4rem"></div>
+    <div class="out" id="voiceOut"></div>
+  </section>
 
-<section>
-  <h2>Spor — <code>/v1/sport</code></h2>
-  <label>Spor aleti fotoğrafı</label>
-  <input type="file" id="sportPhoto" accept="image/*" />
-  <div class="actions">
-    <button onclick="sport()">Anlat</button>
-    <button class="sec" id="sportListen" style="display:none" onclick="playTTS(lastSpeak.sport)">🔊 Dinle</button>
-  </div>
-  <div class="out" id="sportOut"></div>
-</section>
+  <section>
+    <h2>Feedback — <code>/v1/feedback</code></h2>
+    <label>1-3 problem fotoğrafı</label>
+    <input type="file" id="fbPhotos" accept="image/*" multiple />
+    <div class="actions"><button onclick="tFeedback()">Kategorize Et</button></div>
+    <div class="out" id="fbOut"></div>
+  </section>
+
+  <section>
+    <h2>Spor — <code>/v1/sport</code></h2>
+    <label>Spor aleti fotoğrafı</label>
+    <input type="file" id="sportPhoto" accept="image/*" />
+    <div class="actions">
+      <button onclick="tSport()">Anlat</button>
+      <button class="sec" id="sportListen" style="display:none" onclick="playTTS(lastSpeak.sport)">🔊 Dinle</button>
+    </div>
+    <div class="out" id="sportOut"></div>
+  </section>
+</details>
 
 <script>
 const lastSpeak = {};
 let currentAudio = null;
 
-// /tts ile seslendirir, öncekini durdurur; geçen süreyi (ms) döndürür.
+// ---- ortak yardımcılar ----
+
+// Metni server-side TTS ile seslendirir; öncekini keser. Geçen süreyi (ms) döndürür.
 async function speak(text) {
   if (!text || !text.trim()) return null;
-  const started = performance.now();
+  const t0 = performance.now();
   const fd = new FormData();
   fd.append("text", text);
   const r = await fetch("/v1/speech/synthesize", { method: "POST", body: fd });
@@ -156,7 +212,7 @@ async function speak(text) {
   if (currentAudio) currentAudio.pause();
   currentAudio = new Audio(URL.createObjectURL(await r.blob()));
   currentAudio.play().catch(() => {});
-  return Math.round(performance.now() - started);
+  return Math.round(performance.now() - t0);
 }
 
 async function playTTS(text) {
@@ -164,30 +220,316 @@ async function playTTS(text) {
   speak(text);
 }
 
-function render(key, data, speakField) {
-  document.getElementById(key + "Out").textContent = JSON.stringify(data, null, 2);
-  const listen = document.getElementById(key + "Listen");
-  if (listen) {
-    lastSpeak[key] = (speakField && data[speakField]) || "";
-    listen.style.display = lastSpeak[key] ? "inline-block" : "none";
+const esc = (s) => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// Tek seferlik mikrofon kaydı için DRY recorder factory.
+function createRecorder() {
+  let rec = null, chunks = [];
+  return {
+    get recording() { return rec && rec.state === "recording"; },
+    async start(onStop) {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunks = [];
+      rec = new MediaRecorder(stream);
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      rec.onstop = () => {
+        stream.getTracks().forEach((tr) => tr.stop());
+        onStop(new Blob(chunks, { type: rec.mimeType }));
+      };
+      rec.start();
+    },
+    stop() { if (rec && rec.state === "recording") rec.stop(); },
+  };
+}
+
+// Servis durumu
+(async () => {
+  try {
+    const r = await fetch("/health");
+    const d = await r.json();
+    document.getElementById("svcDot").className = "dot " + (d.status === "ok" ? "ok" : "err");
+    document.getElementById("svcText").textContent =
+      "Servis ayakta · Gemini key: " + d.gemini_key_loaded + " · TTS: " + d.tts_provider;
+  } catch {
+    document.getElementById("svcDot").className = "dot err";
+    document.getElementById("svcText").textContent = "Servise ulaşılamıyor";
+  }
+})();
+
+// ============ CANLI SİMÜLASYON ============
+
+let simVideo = null;
+let simMode = "buddy_mode";
+let simGuidance = [];          // son speak_text'ler → recent_guidance
+let simNextCapture = 0;
+let simRunning = false;
+const simRec = createRecorder();
+
+function simNearbyJson() {
+  return document.getElementById("simNearby").value.trim();
+}
+
+function setMode(uiAction) {
+  if (uiAction === "switch_to_sport") simMode = "sport_mode";
+  else if (uiAction === "switch_to_buddy") simMode = "buddy_mode";
+  const bar = document.getElementById("modeBar");
+  const sport = simMode === "sport_mode";
+  bar.className = "modebar" + (sport ? " sport" : "");
+  bar.innerHTML = (sport ? "🏋️ Aktif mod: <b>Spor</b>" : "🚶 Aktif mod: <b>Buddy</b>");
+}
+
+function startSim() {
+  const f = document.getElementById("simVideoFile").files[0];
+  if (!f) { alert("Bir video seç."); return; }
+  simVideo = document.getElementById("simVideo");
+  simGuidance = [];
+  simNextCapture = 0;
+  simRunning = true;
+  simMode = "buddy_mode";
+  setMode(null);
+  document.getElementById("timeline").innerHTML = "";
+  document.getElementById("simStart").disabled = true;
+  document.getElementById("simStop").disabled = false;
+  simVideo.style.display = "block";
+  simVideo.src = URL.createObjectURL(f);
+  const interval = Math.max(2, parseInt(document.getElementById("simInterval").value, 10) || 5);
+
+  simVideo.onplay = () => {
+    document.getElementById("simStatus").textContent =
+      "▶ Oynatılıyor — her " + interval + " sn'de kare → /v1/assist (buddy_frame)";
+  };
+  simVideo.onended = () => {
+    simRunning = false;
+    document.getElementById("simStart").disabled = false;
+    document.getElementById("simStop").disabled = true;
+    document.getElementById("simStatus").textContent = "✓ Video bitti.";
+  };
+  simVideo.ontimeupdate = () => {
+    if (simRunning && simVideo.currentTime >= simNextCapture) {
+      const t = simNextCapture;
+      simNextCapture += interval;
+      sendBuddyFrame(t);
+    }
+  };
+  simVideo.play().catch((e) => {
+    document.getElementById("simStatus").textContent = "Video oynatılamadı (codec?): " + e;
+  });
+}
+
+function stopSim() {
+  simRunning = false;
+  if (simVideo) simVideo.pause();
+  document.getElementById("simStart").disabled = false;
+  document.getElementById("simStop").disabled = true;
+  document.getElementById("simStatus").textContent = "⏹ Durduruldu.";
+}
+
+// O anki video karesini {blob, thumb} olarak yakalar.
+async function grabFrame() {
+  if (!simVideo || !simVideo.videoWidth) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = Math.round(simVideo.videoHeight * (1024 / simVideo.videoWidth));
+  canvas.getContext("2d").drawImage(simVideo, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.85));
+  return { blob, thumb: canvas.toDataURL("image/jpeg", 0.45) };
+}
+
+// Timeline'a kart ekler, kart referansını döndürür (sonradan güncellenir).
+function pushCard(eventLabel, thumb) {
+  const card = document.createElement("div");
+  card.className = "card" + (eventLabel === "voice" ? " voice" : "");
+  card.innerHTML =
+    (thumb ? '<img src="' + thumb + '" />' : "") +
+    '<div class="body"><div class="badges">' +
+    '<span class="badge b-ev ' + (eventLabel === "voice" ? "voice" : "") + '">' +
+    (eventLabel === "voice" ? "🗣️ VOICE" : "📷 BUDDY_FRAME") + "</span>" +
+    '<span class="badge b-proc">⏳ işleniyor…</span></div>' +
+    '<div class="speak"></div><div class="meta"></div></div>';
+  document.getElementById("timeline").prepend(card);
+  return card;
+}
+
+// AssistResponse → kartı doldurur, TTS okur.
+function fillCard(card, data, ms, doTTS) {
+  const badges = card.querySelector(".badges");
+  const ev = badges.firstChild;
+  badges.innerHTML = "";
+  badges.appendChild(ev);
+  const intent = data.intent || "?";
+  badges.insertAdjacentHTML("beforeend", '<span class="badge b-intent">' + esc(intent) + "</span>");
+  const prio = data.priority || "low";
+  badges.insertAdjacentHTML("beforeend", '<span class="badge b-' + prio + '">' + prio.toUpperCase() + "</span>");
+  if (data.ui_action && data.ui_action !== "none") {
+    badges.insertAdjacentHTML("beforeend", '<span class="badge b-act">▶ ' + esc(data.ui_action) + "</span>");
+  }
+  const speakText = (data.speak_text || "").trim();
+  const speakEl = card.querySelector(".speak");
+  speakEl.textContent = speakText || "(sessiz)";
+  speakEl.className = "speak" + (speakText ? "" : " silent");
+
+  if (data.ticket) {
+    const t = data.ticket;
+    const box = document.createElement("div");
+    box.className = "ticketbox";
+    box.innerHTML = "<b>📋 Ticket → n8n</b><br>" + esc(t.issue_type) + " · " + esc(t.severity) +
+      " · " + esc(t.description_tr) + "<br><span class='muted'>source: " + esc(t.source) + "</span>";
+    card.querySelector(".body").appendChild(box);
+  }
+  card.querySelector(".meta").innerHTML =
+    "⏱ " + ms + " ms" +
+    " &nbsp;<details><summary>JSON</summary><pre>" + esc(JSON.stringify(data, null, 2)) + "</pre></details>";
+
+  if (data.ui_action) setMode(data.ui_action);
+  if (doTTS && speakText) speak(speakText);
+}
+
+function cardError(card, msg) {
+  card.querySelector(".badges").lastChild.className = "badge b-err";
+  card.querySelector(".badges").lastChild.textContent = "HATA";
+  card.querySelector(".speak").textContent = String(msg);
+}
+
+// Proaktif kare → /v1/assist event=buddy_frame
+async function sendBuddyFrame(t) {
+  const grabbed = await grabFrame();
+  if (!grabbed) return;
+  const card = pushCard("buddy_frame", grabbed.thumb);
+  const fd = new FormData();
+  fd.append("event", "buddy_frame");
+  fd.append("frame", grabbed.blob, "frame.jpg");
+  if (simGuidance.length) fd.append("recent_guidance", simGuidance.join("\n"));
+  const nearby = simNearbyJson();
+  if (nearby) fd.append("nearby_tickets", nearby);
+  const t0 = performance.now();
+  try {
+    const r = await fetch("/v1/assist", { method: "POST", body: fd });
+    const data = await r.json();
+    const ms = Math.round(performance.now() - t0);
+    if (data.speak_text && data.speak_text.trim()) {
+      simGuidance.push(data.speak_text.trim());
+      if (simGuidance.length > 3) simGuidance.shift();
+    }
+    fillCard(card, data, ms, document.getElementById("simTTS").checked);
+  } catch (e) {
+    cardError(card, e);
   }
 }
 
-async function call(url, fd, key, speakField) {
-  const out = document.getElementById(key + "Out");
-  out.textContent = "İşleniyor... (Gemini çağrısı)";
-  const started = performance.now();
+// Sesli soru (yazılı veya kayıt) → /v1/assist event=voice + o anki kare
+async function sendVoice(opts) {
+  const grabbed = await grabFrame();
+  const card = pushCard("voice", grabbed ? grabbed.thumb : null);
+  const fd = new FormData();
+  fd.append("event", "voice");
+  fd.append("screen_context", simMode);
+  if (opts.transcript) fd.append("transcript", opts.transcript);
+  if (opts.audio) fd.append("audio", opts.audio, "kayit.webm");
+  if (grabbed) fd.append("frame", grabbed.blob, "frame.jpg");
+  const nearby = simNearbyJson();
+  if (nearby) fd.append("nearby_tickets", nearby);
+  const t0 = performance.now();
   try {
-    const r = await fetch(url, { method: "POST", body: fd });
+    const r = await fetch("/v1/assist", { method: "POST", body: fd });
     const data = await r.json();
-    render(key, data, speakField);
-    out.textContent += "\n\n— " + r.status + ", " + Math.round(performance.now() - started) + " ms";
+    fillCard(card, data, Math.round(performance.now() - t0), document.getElementById("simTTS").checked);
+  } catch (e) {
+    cardError(card, e);
+  }
+}
+
+function simAskTyped() {
+  const text = document.getElementById("simAskText").value.trim();
+  if (!text) { alert("Soru yaz ya da 🎙 ile kaydet."); return; }
+  document.getElementById("simAskText").value = "";
+  sendVoice({ transcript: text });
+}
+
+function simMicToggle() {
+  const btn = document.getElementById("simMicBtn");
+  if (simRec.recording) { simRec.stop(); return; }
+  simRec.start((blob) => {
+    btn.textContent = "🎙"; btn.className = "sec";
+    sendVoice({ audio: blob });
+  }).then(() => {
+    btn.textContent = "⏹"; btn.className = "rec";
+  }).catch((e) => alert("Mikrofon erişilemedi: " + e));
+}
+
+// ============ ORCHESTRATOR — TEK İSTEK ============
+
+const askRec = createRecorder();
+let askBlob = null;
+
+function askMicToggle() {
+  const btn = document.getElementById("askMicBtn");
+  const status = document.getElementById("askRecStatus");
+  if (askRec.recording) { askRec.stop(); return; }
+  askRec.start((blob) => {
+    askBlob = blob;
+    btn.textContent = "🎙 Kaydet"; btn.className = "sec";
+    status.textContent = "Ses hazır (" + Math.round(blob.size / 1024) + " KB) — 'Gönder'e bas.";
+  }).then(() => {
+    btn.textContent = "⏹ Durdur"; btn.className = "rec";
+    status.textContent = "🔴 Kaydediliyor…";
+  }).catch((e) => { status.textContent = "Mikrofon erişilemedi: " + e; });
+}
+
+async function assistManual() {
+  const out = document.getElementById("askOut");
+  out.textContent = "İşleniyor… (orchestrator)";
+  const fd = new FormData();
+  fd.append("event", document.getElementById("askEvent").value);
+  fd.append("screen_context", document.getElementById("askCtx").value);
+  if (askBlob) {
+    fd.append("audio", askBlob, "kayit.webm");
+    askBlob = null;
+    document.getElementById("askRecStatus").textContent = "";
+  } else {
+    const text = document.getElementById("askText").value.trim();
+    if (text) fd.append("transcript", text);
+  }
+  const frameFile = document.getElementById("askFrame").files[0];
+  if (frameFile) fd.append("frame", frameFile);
+  const nearby = document.getElementById("askNearby").value.trim();
+  if (nearby) fd.append("nearby_tickets", nearby);
+  const t0 = performance.now();
+  try {
+    const r = await fetch("/v1/assist", { method: "POST", body: fd });
+    const data = await r.json();
+    out.textContent = JSON.stringify(data, null, 2) +
+      "\n\n— HTTP " + r.status + " · " + Math.round(performance.now() - t0) + " ms";
+    lastSpeak.ask = data.speak_text || "";
+    document.getElementById("askListen").style.display = lastSpeak.ask ? "inline-block" : "none";
+    if (lastSpeak.ask) speak(lastSpeak.ask);
   } catch (e) {
     out.textContent = "HATA: " + e;
   }
 }
 
-function buddy() {
+// ============ TEKİL ENDPOINT TESTLERİ ============
+
+async function callJson(url, fd, outId, speakKey, speakField) {
+  const out = document.getElementById(outId);
+  out.textContent = "İşleniyor… (Gemini çağrısı)";
+  const t0 = performance.now();
+  try {
+    const r = await fetch(url, { method: "POST", body: fd });
+    const data = await r.json();
+    out.textContent = JSON.stringify(data, null, 2) +
+      "\n\n— HTTP " + r.status + " · " + Math.round(performance.now() - t0) + " ms";
+    if (speakKey) {
+      lastSpeak[speakKey] = (speakField && data[speakField]) || "";
+      const btn = document.getElementById(speakKey + "Listen");
+      if (btn) btn.style.display = lastSpeak[speakKey] ? "inline-block" : "none";
+    }
+  } catch (e) {
+    out.textContent = "HATA: " + e;
+  }
+}
+
+function tBuddy() {
   const f = document.getElementById("buddyFrame").files[0];
   if (!f) { alert("Bir görsel seç."); return; }
   const fd = new FormData();
@@ -196,161 +538,51 @@ function buddy() {
   const lon = document.getElementById("buddyLon").value.trim();
   if (lat) fd.append("lat", lat);
   if (lon) fd.append("lon", lon);
-  call("/v1/buddy", fd, "buddy", "speak_text");
+  callJson("/v1/buddy", fd, "buddyOut", "buddy", "speak_text");
 }
 
-// --- Buddy Video: gerçek zamanlı simülasyon ---
+const voiceRec = createRecorder();
+let voiceBlob = null;
 
-// Realtime akışta son speak_text'ler — bir sonraki kareye recent_guidance olarak geçer.
-let realtimeGuidance = [];
-
-function startVideoSim() {
-  realtimeGuidance = [];
-  const f = document.getElementById("videoFile").files[0];
-  if (!f) { alert("Bir video seç."); return; }
-  const player = document.getElementById("videoPlayer");
-  const status = document.getElementById("videoStatus");
-  document.getElementById("videoLog").innerHTML = "";
-  player.style.display = "block";
-  player.src = URL.createObjectURL(f);
-
-  const interval = Math.max(1, parseInt(document.getElementById("videoInterval").value, 10) || 5);
-  let nextCapture = 0;
-
-  player.onplay = () => {
-    status.textContent = "Oynatılıyor — her " + interval + " sn'de kare gönderiliyor + seslendiriliyor...";
-  };
-  player.onended = () => { status.textContent = "Video bitti. ✓"; };
-  player.ontimeupdate = () => {
-    if (player.currentTime >= nextCapture) {
-      const t = nextCapture;
-      nextCapture += interval;
-      captureAndAnalyze(player, t);
-    }
-  };
-  player.play().catch((e) => {
-    status.textContent = "Video oynatılamadı (codec?): " + e;
-  });
+function voiceMicToggle() {
+  const btn = document.getElementById("voiceMicBtn");
+  const status = document.getElementById("voiceRecStatus");
+  if (voiceRec.recording) { voiceRec.stop(); return; }
+  voiceRec.start((blob) => {
+    voiceBlob = blob;
+    btn.textContent = "🎙 Kaydet"; btn.className = "sec";
+    status.textContent = "Ses hazır (" + Math.round(blob.size / 1024) + " KB) — 'Sor'a bas.";
+  }).then(() => {
+    btn.textContent = "⏹ Durdur"; btn.className = "rec";
+    status.textContent = "🔴 Kaydediliyor…";
+  }).catch((e) => { status.textContent = "Mikrofon erişilemedi: " + e; });
 }
 
-async function captureAndAnalyze(player, t) {
-  if (!player.videoWidth) return;
-  const scale = 1024 / player.videoWidth;
-  const canvas = document.createElement("canvas");
-  canvas.width = 1024;
-  canvas.height = Math.round(player.videoHeight * scale);
-  canvas.getContext("2d").drawImage(player, 0, 0, canvas.width, canvas.height);
-  const thumb = canvas.toDataURL("image/jpeg", 0.5);
-  const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.85));
-
-  const card = document.createElement("div");
-  card.className = "frame";
-  card.innerHTML =
-    '<img src="' + thumb + '" />' +
-    '<div class="info"><b>' + t.toFixed(0) + ' sn</b> ' +
-    '<span class="badge proc">⏳ VLM...</span>' +
-    '<div class="res"></div></div>';
-  document.getElementById("videoLog").prepend(card);
-  const badge = card.querySelector(".badge");
-
-  const fd = new FormData();
-  fd.append("frame", blob, "frame.jpg");
-  if (realtimeGuidance.length) fd.append("recent_guidance", realtimeGuidance.join("\n"));
-  try {
-    const t0 = performance.now();
-    const r = await fetch("/v1/buddy", { method: "POST", body: fd });
-    const data = await r.json();
-    const vlmMs = Math.round(performance.now() - t0);
-    if (data.speak_text && data.speak_text.trim()) {
-      realtimeGuidance.push(data.speak_text.trim());
-      if (realtimeGuidance.length > 3) realtimeGuidance.shift();
-    }
-    card.querySelector(".res").textContent = data.speak_text || "(sessiz)";
-
-    let line = (data.priority || "").toUpperCase() + " · VLM " + vlmMs + "ms";
-    if (document.getElementById("videoTTS").checked && data.speak_text) {
-      badge.textContent = "⏳ TTS...";
-      const ttsMs = await speak(data.speak_text);
-      if (ttsMs !== null) {
-        line += " · TTS " + ttsMs + "ms · toplam " + (vlmMs + ttsMs) + "ms";
-      }
-    }
-    badge.className = "badge done";
-    badge.textContent = line;
-  } catch (e) {
-    badge.className = "badge err";
-    badge.textContent = "HATA";
-    card.querySelector(".res").textContent = String(e);
-  }
-}
-
-// --- Voice Q&A: yaz veya mikrofonla kaydet ---
-
-let mediaRecorder = null;
-let recordedChunks = [];
-let recordedBlob = null;
-
-async function toggleRecord() {
-  const btn = document.getElementById("recBtn");
-  const status = document.getElementById("recStatus");
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
-    return;
-  }
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    recordedChunks = [];
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = (e) => { if (e.data.size) recordedChunks.push(e.data); };
-    mediaRecorder.onstop = () => {
-      recordedBlob = new Blob(recordedChunks, { type: mediaRecorder.mimeType });
-      stream.getTracks().forEach((tr) => tr.stop());
-      btn.textContent = "🎙 Kaydet";
-      btn.className = "sec";
-      status.textContent = "Ses hazır (" + Math.round(recordedBlob.size / 1024) +
-        " KB) — 'Sor'a bas, fal.ai Scribe ile transkript edilecek.";
-    };
-    mediaRecorder.start();
-    btn.textContent = "⏹ Durdur";
-    btn.className = "rec";
-    status.textContent = "🔴 Kaydediliyor...";
-  } catch (e) {
-    status.textContent = "Mikrofon erişilemedi: " + e;
-  }
-}
-
-async function voice() {
+async function tVoice() {
   const out = document.getElementById("voiceOut");
   const ctx = document.getElementById("voiceCtx").value;
   const frameFile = document.getElementById("voiceFrame").files[0];
   let transcript = document.getElementById("voiceQ").value.trim();
 
-  // Kayıt varsa: önce STT (transkript görünür), sonra Q&A.
-  if (recordedBlob) {
-    out.textContent = "Ses transkript ediliyor (fal.ai Scribe)...";
+  if (voiceBlob) {
+    out.textContent = "Ses transkript ediliyor (fal.ai Scribe)…";
     const sttFd = new FormData();
-    sttFd.append("audio", recordedBlob, "kayit.webm");
-    const blobUsed = recordedBlob;
-    recordedBlob = null;
-    document.getElementById("recStatus").textContent = "";
+    sttFd.append("audio", voiceBlob, "kayit.webm");
+    const used = voiceBlob;
+    voiceBlob = null;
+    document.getElementById("voiceRecStatus").textContent = "";
     const t0 = performance.now();
     try {
       const sr = await fetch("/v1/speech/transcribe", { method: "POST", body: sttFd });
-      const sd = await sr.json();
-      transcript = (sd.transcript || "").trim();
-    } catch (e) {
-      out.textContent = "STT HATA: " + e;
-      return;
-    }
-    const sttMs = Math.round(performance.now() - t0);
-    out.textContent = "📝 STT (" + Math.round(blobUsed.size / 1024) + " KB, " + sttMs +
-      "ms): " + (transcript || "(boş)") + "\n\n";
+      transcript = ((await sr.json()).transcript || "").trim();
+    } catch (e) { out.textContent = "STT HATA: " + e; return; }
+    out.textContent = "📝 STT (" + Math.round(used.size / 1024) + " KB, " +
+      Math.round(performance.now() - t0) + " ms): " + (transcript || "(boş)") + "\n\n";
     if (!transcript) { out.textContent += "STT boş döndü — tekrar dene."; return; }
     document.getElementById("voiceQ").value = transcript;
   } else {
     out.textContent = "";
   }
-
   if (!transcript) { alert("Soru yaz ya da mikrofonla kaydet."); return; }
 
   const fd = new FormData();
@@ -362,102 +594,29 @@ async function voice() {
     const r = await fetch("/v1/voice", { method: "POST", body: fd });
     const data = await r.json();
     out.textContent += JSON.stringify(data, null, 2) +
-      "\n\n— /v1/voice " + Math.round(performance.now() - t1) + " ms";
+      "\n\n— HTTP " + r.status + " · " + Math.round(performance.now() - t1) + " ms";
     lastSpeak.voice = data.answer_speak_text || "";
-    document.getElementById("voiceListen").style.display =
-      lastSpeak.voice ? "inline-block" : "none";
+    document.getElementById("voiceListen").style.display = lastSpeak.voice ? "inline-block" : "none";
     if (lastSpeak.voice) speak(lastSpeak.voice);
   } catch (e) {
     out.textContent += "HATA: " + e;
   }
 }
 
-function feedback() {
+function tFeedback() {
   const files = document.getElementById("fbPhotos").files;
   if (!files.length) { alert("En az 1 fotoğraf seç."); return; }
   const fd = new FormData();
   for (const f of files) fd.append("photos", f);
-  call("/v1/feedback", fd, "fb", null);
+  callJson("/v1/feedback", fd, "fbOut", null, null);
 }
 
-function sport() {
+function tSport() {
   const f = document.getElementById("sportPhoto").files[0];
   if (!f) { alert("Bir görsel seç."); return; }
   const fd = new FormData();
   fd.append("photo", f);
-  call("/v1/sport", fd, "sport", "speak_text");
-}
-
-// --- Orchestrator /v1/assist ---
-
-let assistRecorder = null;
-let assistChunks = [];
-let assistBlob = null;
-
-async function toggleAssistRecord() {
-  const btn = document.getElementById("assistRec");
-  const status = document.getElementById("assistRecStatus");
-  if (assistRecorder && assistRecorder.state === "recording") {
-    assistRecorder.stop();
-    return;
-  }
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    assistChunks = [];
-    assistRecorder = new MediaRecorder(stream);
-    assistRecorder.ondataavailable = (e) => { if (e.data.size) assistChunks.push(e.data); };
-    assistRecorder.onstop = () => {
-      assistBlob = new Blob(assistChunks, { type: assistRecorder.mimeType });
-      stream.getTracks().forEach((tr) => tr.stop());
-      btn.textContent = "🎙 Kaydet";
-      btn.className = "sec";
-      status.textContent = "Ses hazır (" + Math.round(assistBlob.size / 1024) +
-        " KB) — 'Gönder'e bas.";
-    };
-    assistRecorder.start();
-    btn.textContent = "⏹ Durdur";
-    btn.className = "rec";
-    status.textContent = "🔴 Kaydediliyor...";
-  } catch (e) {
-    status.textContent = "Mikrofon erişilemedi: " + e;
-  }
-}
-
-async function assist() {
-  const out = document.getElementById("assistOut");
-  out.textContent = "İşleniyor... (orchestrator)";
-  const fd = new FormData();
-  fd.append("event", "voice");
-  fd.append("screen_context", document.getElementById("askCtx").value);
-
-  if (assistBlob) {
-    fd.append("audio", assistBlob, "kayit.webm");
-    assistBlob = null;
-    document.getElementById("assistRecStatus").textContent = "";
-  } else {
-    const text = document.getElementById("askText").value.trim();
-    if (!text) { alert("Sesli ifade yaz ya da kaydet."); out.textContent = ""; return; }
-    fd.append("transcript", text);
-  }
-
-  const frameFile = document.getElementById("askFrame").files[0];
-  if (frameFile) fd.append("frame", frameFile);
-  const nearby = document.getElementById("askNearby").value.trim();
-  if (nearby) fd.append("nearby_tickets", nearby);
-
-  const started = performance.now();
-  try {
-    const r = await fetch("/v1/assist", { method: "POST", body: fd });
-    const data = await r.json();
-    out.textContent = JSON.stringify(data, null, 2) +
-      "\n\n— " + r.status + ", " + Math.round(performance.now() - started) + " ms";
-    lastSpeak.assist = data.speak_text || "";
-    document.getElementById("assistListen").style.display =
-      lastSpeak.assist ? "inline-block" : "none";
-    if (lastSpeak.assist) speak(lastSpeak.assist);
-  } catch (e) {
-    out.textContent = "HATA: " + e;
-  }
+  callJson("/v1/sport", fd, "sportOut", "sport", "speak_text");
 }
 </script>
 </body>
