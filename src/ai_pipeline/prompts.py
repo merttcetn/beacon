@@ -8,6 +8,11 @@ ile zorlandığından prompt'lar rol + öncelik + kurallara odaklanır.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ai_pipeline.schemas import NearbyTicket
+
 # --- Pattern A: Buddy Mode (spec §6.1) ---
 
 BUDDY_SYSTEM = """Sen görme engelli bir kullanıcının yürüyüş asistanısın. Sana verilen \
@@ -56,9 +61,10 @@ def buddy_user_prompt(
             "karede görünmez; speak_text'i bunlarla DOLDURMA):"
         )
         for item in known_issues:
+            dist = item.get("distance_m")
+            dist_str = f"~{round(dist)}m" if dist is not None else "yakında"
             lines.append(
-                f"- ~{item['distance_m']}m: {item['description_tr']} "
-                f"({item['issue_type']}, {item['severity']})"
+                f"- {dist_str}: {item['description_tr']} ({item['issue_type']}, {item['severity']})"
             )
         lines.append(
             "Bunlardan yalnızca gidiş yönünde ve yakın olanı kısaca "
@@ -114,9 +120,11 @@ def voice_user_prompt(
 
 # --- Pattern B: Feedback Modu (spec §6.2) ---
 
-FEEDBACK_SYSTEM = """Sen kaldırım/yol erişilebilirliği uzmanısın. Vatandaşın çektiği \
-fotoğraf(lar) bir yaya yolundaki bir noktayı gösteriyor. Görevin: o noktada yaya \
-güvenliğini ve erişilebilirliğini tehdit eden problemleri tespit edip kategorize etmek.
+FEEDBACK_SYSTEM = """Sen kaldırım/yol erişilebilirliği uzmanısın. Sana verilen \
+fotoğraf(lar) bir yaya yolundaki bir noktayı gösteriyor — gönüllü bir vatandaşın çektiği \
+kare ya da görme engelli bir kullanıcının o an baktığı sahne olabilir; ikisinde de görevin \
+aynı. Görevin: o noktada yaya güvenliğini ve erişilebilirliğini tehdit eden problemleri \
+tespit edip kategorize etmek.
 
 Kurallar:
 - Sadece kesin gördüğün problemleri raporla — emin değilsen confidence'ı düşür, uydurma.
@@ -158,3 +166,67 @@ yapma, akıcı konuş."""
 
 def sport_user_prompt() -> str:
     return "Bu spor aletini analiz et ve kullanıcıya anlat."
+
+
+# --- Orchestrator: niyet sınıflandırma + çevre ticket özeti ---
+
+ORCHESTRATOR_SYSTEM = """Sen görme engelli bir kullanıcının sesli asistanının \
+YÖNLENDİRİCİSİSİN. Kullanıcı sesli bir şey söyledi (uygulama STT ile metne çevirdi). \
+Görevin: kullanıcının NE İSTEDİĞİNİ anlamak ve doğru niyeti (intent) seçmek. Cevabı sen \
+ÜRETMEZSİN — yalnızca sınıflandırırsın; tek istisna aşağıdaki çevre özeti.
+
+NİYETLER (intent) — tam birini seç:
+- ask: Çevre, durum veya bir nesne hakkında soru. "Önümde ne var", "bu nedir", \
+"geçebilir miyim", "tehlike var mı".
+- describe_sport: Bir spor aletini/makinesini tanıma veya kullanımını öğrenme isteği. \
+"Bu aleti anlat", "şu makineyi tarif et", "bunu nasıl kullanırım", "buradaki cihaz ne".
+- report_issue: Karşılaştığı bir engeli/sorunu KAYDETME / BİLDİRME isteği. "Bunu bildir", \
+"şunu kaydet", "burada sorun var kaydet", "raporla".
+- nearby_tickets: Çevresinde bilinen/kayıtlı sorun olup olmadığını sorma. "Etrafımda \
+sorun var mı", "yakında bildirilmiş bir şey var mı", "buralarda ne gibi sorunlar var".
+- switch_mode: Mod değiştirme isteği (anlatım/soru içermez). "Spor moduna geç", "buddy \
+modunu aç", "yürüyüş moduna dön". target_mode'u doldur: buddy veya sport.
+- stop: Susturma. "Sus", "yeter", "tamam", "kapat", "sessiz ol".
+- unknown: Yukarıdakilerin hiçbirine net oturmuyor.
+
+KURALLAR:
+- STT yanlış transkripsiyon yapmış olabilir — ses benzerliklerini düşün, screen_context \
+ve çevre bilgisiyle mantıklı yorumla (örn. "çukur" yerine "şükür" gelebilir). Emin \
+değilsen confidence'ı düşür ama yine de en olası niyeti seç; unknown'ı yalnızca gerçekten \
+anlamsız/alakasız ifadelerde kullan.
+- describe_sport ile ask farkı: bir aleti/makineyi ÖĞRENME isteği describe_sport; genel \
+"bu ne" sorusu ask.
+- describe_sport screen_context'ten BAĞIMSIZDIR — kullanıcı idle'dayken bile bir aleti \
+öğrenmek/tanımak isterse describe_sport seç; mod sonradan değişir.
+- switch_mode seçtiysen target_mode'u MUTLAKA doldur (buddy ya da sport). Hangi mod \
+istendiği belli değilse switch_mode değil unknown seç. target_mode yalnızca switch_mode'da \
+anlamlı; diğer niyetlerde none bırak.
+
+nearby_tickets_speak_text:
+- YALNIZCA intent report_issue VEYA nearby_tickets ise doldur. Diğer tüm niyetlerde boş \
+string bırak.
+- Doldururken: sana verilen "çevredeki kayıtlı ticket'lar" listesini görme engelli \
+kullanıcıya Türkçe, kısa, doğal konuşma diliyle özetle. Mesafe bilgisini koru ("yaklaşık \
+20 metre ileride bozuk kaldırım var"). Liste boşsa "Yakında kayıtlı başka bir sorun yok." \
+de. ASLA yön emri verme — bilgilendir, kararı kullanıcı verir."""
+
+
+def orchestrator_user_prompt(
+    transcript: str,
+    screen_context: str,
+    nearby_tickets: list[NearbyTicket],
+) -> str:
+    lines = [
+        f'Kullanıcının sesli ifadesi (STT transkripti): "{transcript}"',
+        f"Bulunduğu ekran (screen_context): {screen_context}",
+    ]
+    if nearby_tickets:
+        lines.append("Çevresindeki kayıtlı ticket'lar:")
+        for ticket in nearby_tickets:
+            dist = f"~{round(ticket.distance_m)}m" if ticket.distance_m is not None else "yakında"
+            lines.append(
+                f"- {dist}: {ticket.description_tr} ({ticket.issue_type}, {ticket.severity})"
+            )
+    else:
+        lines.append("Çevresinde kayıtlı ticket yok.")
+    return "\n".join(lines)
