@@ -1,4 +1,8 @@
-import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import BottomSheet, {
+  BottomSheetScrollView,
+  type BottomSheetBackgroundProps,
+} from '@gorhom/bottom-sheet';
+import { BlurView } from 'expo-blur';
 import {
   Bell,
   Building2,
@@ -15,7 +19,7 @@ import {
   UserRound,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -25,6 +29,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppMap, type AppMapMarker } from '@/components/AppMap';
+import { GlassSurface } from '@/components/GlassSurface';
 import {
   COMPANY_HEAT_CIRCLES,
   COMPANY_PINS,
@@ -57,6 +62,17 @@ export default function CompanyDashboard() {
     [],
   );
 
+  const renderSheetBackground = useCallback(
+    ({ style }: BottomSheetBackgroundProps) => (
+      <View style={[style, styles.sheetBgWrap]} pointerEvents="none">
+        <BlurView intensity={48} tint="light" style={StyleSheet.absoluteFill} />
+        <View style={styles.sheetBgTint} />
+        <View style={styles.sheetBgHighlight} />
+      </View>
+    ),
+    [],
+  );
+
   return (
     <View style={styles.root}>
       <SafeAreaView edges={['top']} style={styles.headerSafe}>
@@ -74,7 +90,12 @@ export default function CompanyDashboard() {
           </Pressable>
         </View>
 
-        <View style={styles.marketStrip}>
+        <GlassSurface
+          style={styles.marketStrip}
+          radius={radius.sm}
+          intensity={32}
+          tintOpacity={0.7}
+        >
           <View style={styles.stripIcon}>
             <TrendingUp size={16} color={colors.status.partial} strokeWidth={2.4} />
           </View>
@@ -88,7 +109,7 @@ export default function CompanyDashboard() {
             <ShieldCheck size={13} color={colors.status.verified} strokeWidth={2.4} />
             <Text style={styles.trustText}>KVKK</Text>
           </View>
-        </View>
+        </GlassSurface>
 
         <View style={styles.quickNav}>
           <Pressable
@@ -135,11 +156,16 @@ export default function CompanyDashboard() {
 
         <View style={styles.summaryRow} pointerEvents="box-none">
           {COMPANY_SUMMARY.map((c) => (
-            <View key={c.label} style={styles.summaryCard}>
+            <GlassSurface
+              key={c.label}
+              style={styles.summaryCard}
+              radius={radius.md}
+              intensity={45}
+            >
               <Text style={styles.summaryLabel}>{c.label}</Text>
               <Text style={[styles.summaryValue, { color: c.tone }]}>{c.value}</Text>
               <Text style={styles.summaryMeta}>{c.meta}</Text>
-            </View>
+            </GlassSurface>
           ))}
         </View>
 
@@ -149,7 +175,7 @@ export default function CompanyDashboard() {
           snapPoints={SNAP_POINTS}
           enableDynamicSizing={false}
           enablePanDownToClose={false}
-          backgroundStyle={styles.sheetBg}
+          backgroundComponent={renderSheetBackground}
           handleIndicatorStyle={styles.sheetHandleBar}
           handleStyle={styles.sheetHandle}
         >
@@ -184,7 +210,12 @@ export default function CompanyDashboard() {
               </View>
             </Pressable>
 
-            <View style={styles.briefPanel}>
+            <GlassSurface
+              style={styles.briefPanel}
+              radius={radius.md}
+              intensity={28}
+              tintOpacity={0.55}
+            >
               <View style={styles.briefAccent} />
               <View style={styles.briefCopy}>
                 <View style={styles.briefKicker}>
@@ -210,18 +241,30 @@ export default function CompanyDashboard() {
                   {COMPANY_BRIEF.signal}
                 </Text>
               </View>
-            </View>
+            </GlassSurface>
 
             <View style={styles.metricRail}>
               {COMPANY_BRIEF.metrics.map((m) => (
-                <View key={m.label} style={styles.railItem}>
+                <GlassSurface
+                  key={m.label}
+                  variant="dark"
+                  style={styles.railItem}
+                  radius={radius.sm}
+                  intensity={40}
+                  tintOpacity={0.72}
+                >
                   <Text style={styles.railValue}>{m.value}</Text>
                   <Text style={styles.railLabel}>{m.label}</Text>
-                </View>
+                </GlassSurface>
               ))}
             </View>
 
-            <View style={styles.categoryPanel}>
+            <GlassSurface
+              style={styles.categoryPanel}
+              radius={radius.md}
+              intensity={30}
+              tintOpacity={0.55}
+            >
               <View style={styles.panelHeader}>
                 <View style={styles.panelTitleWrap}>
                   <SlidersHorizontal size={14} color={colors.text.primary} strokeWidth={2.4} />
@@ -271,16 +314,13 @@ export default function CompanyDashboard() {
                   </View>
                 </View>
               ))}
-            </View>
+            </GlassSurface>
           </BottomSheetScrollView>
         </BottomSheet>
       </View>
     </View>
   );
 }
-
-const PANEL_BG = 'rgba(255,255,255,0.96)';
-const PANEL_BORDER = 'rgba(255,255,255,0.72)';
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg.primary },
@@ -342,10 +382,6 @@ const styles = StyleSheet.create({
   },
   marketStrip: {
     minHeight: 50,
-    borderRadius: radius.sm,
-    backgroundColor: '#F6F8F5',
-    borderWidth: 1,
-    borderColor: '#DDE9D8',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
@@ -447,16 +483,7 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     flex: 1,
-    backgroundColor: PANEL_BG,
-    borderWidth: 1,
-    borderColor: PANEL_BORDER,
-    borderRadius: radius.sm,
-    padding: 9,
-    shadowColor: '#1A1D24',
-    shadowOpacity: 0.15,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 3,
+    padding: 10,
   },
   summaryLabel: {
     fontFamily: fontFamily.mono,
@@ -476,10 +503,23 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 
-  sheetBg: {
-    backgroundColor: colors.bg.elevated,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+  sheetBgWrap: {
+    overflow: 'hidden',
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  sheetBgTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(248,250,252,0.62)',
+  },
+  sheetBgHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 20,
+    right: 20,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.9)',
   },
   sheetHandle: {
     paddingTop: 10,
@@ -550,12 +590,7 @@ const styles = StyleSheet.create({
 
   briefPanel: {
     minHeight: 126,
-    backgroundColor: colors.bg.primary,
-    borderWidth: 1,
-    borderColor: colors.border.divider,
-    borderRadius: radius.sm,
     flexDirection: 'row',
-    overflow: 'hidden',
   },
   briefAccent: {
     width: 5,
@@ -599,7 +634,7 @@ const styles = StyleSheet.create({
   briefChip: {
     overflow: 'hidden',
     borderRadius: 5,
-    backgroundColor: colors.bg.secondary,
+    backgroundColor: 'rgba(255,255,255,0.6)',
     color: colors.text.secondary,
     fontFamily: fontFamily.mono,
     fontSize: 9.5,
@@ -609,11 +644,11 @@ const styles = StyleSheet.create({
   scoreBox: {
     width: 88,
     borderLeftWidth: 1,
-    borderLeftColor: colors.border.divider,
+    borderLeftColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
-    backgroundColor: '#11171F',
+    backgroundColor: 'rgba(17,23,31,0.92)',
   },
   scoreValue: {
     fontFamily: fontFamily.displayExtra,
@@ -642,10 +677,6 @@ const styles = StyleSheet.create({
   },
   railItem: {
     flex: 1,
-    borderRadius: radius.sm,
-    backgroundColor: 'rgba(17,23,31,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
     paddingHorizontal: 10,
     paddingVertical: 10,
   },
@@ -662,10 +693,6 @@ const styles = StyleSheet.create({
   },
 
   categoryPanel: {
-    backgroundColor: colors.bg.primary,
-    borderWidth: 1,
-    borderColor: colors.border.divider,
-    borderRadius: radius.sm,
     padding: 12,
   },
   panelHeader: {
@@ -687,7 +714,7 @@ const styles = StyleSheet.create({
   modeSwitch: {
     flexDirection: 'row',
     borderRadius: radius.sm,
-    backgroundColor: colors.bg.secondary,
+    backgroundColor: 'rgba(255,255,255,0.55)',
     padding: 3,
     gap: 3,
   },
@@ -721,7 +748,7 @@ const styles = StyleSheet.create({
   barTrack: {
     height: 5,
     borderRadius: 99,
-    backgroundColor: colors.border.divider,
+    backgroundColor: 'rgba(17,23,31,0.12)',
     overflow: 'hidden',
   },
   barFill: {
