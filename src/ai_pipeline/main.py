@@ -33,6 +33,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ai_pipeline")
 
+# Hangi Gemini key'in yüklendiğini başlangıçta görünür kıl — yanlış key (örn. shell ortam
+# değişkeniyle ezilmiş ücretsiz key) sessizce devreye girip 429'a yol açmasın.
+if settings.gemini_api_key:
+    logger.info("Gemini API key yüklendi — son 6 hane: …%s", settings.gemini_api_key[-6:])
+else:
+    logger.warning("GEMINI_API_KEY boş — VLM endpoint'leri güvenli fallback dönecek")
+
 _TEST_PAGE = Path(__file__).resolve().parent.parent.parent / "static" / "test.html"
 
 app = FastAPI(title="ai — Sesli Rehberlik AI Servisi", version="0.1.0")
