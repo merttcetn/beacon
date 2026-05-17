@@ -266,7 +266,7 @@ function FeedList({ items, locationReady, onItemPress }: FeedListProps) {
           <View style={styles.feedHeaderRule} />
           <Text style={styles.feedHeaderRadius}>~{FEED_RADIUS_KM} KM</Text>
         </View>
-        <Text style={styles.feedHeaderTitle}>Yakındaki ticket'lar</Text>
+        <Text style={styles.feedHeaderTitle}>Yakındaki ticket&apos;lar</Text>
         <Text style={styles.feedHeaderSubtitle}>
           {locationReady
             ? `${items.length} kayıt · mesafeye göre sıralı`
@@ -280,7 +280,7 @@ function FeedList({ items, locationReady, onItemPress }: FeedListProps) {
           <Text style={styles.feedEmptyTitle}>Yakında ticket yok</Text>
           <Text style={styles.feedEmptySub}>
             {FEED_RADIUS_KM} km içinde bekleyen bir doğrulama yok. Yeni bir
-            problem gördüysen "+" ile bildirebilirsin.
+            problem gördüysen &quot;+&quot; ile bildirebilirsin.
           </Text>
         </View>
       ) : (
