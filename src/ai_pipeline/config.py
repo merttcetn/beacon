@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     orchestrator_llm_model: str = "gemini-3.1-flash-lite"  # hızlı, deterministik routing
     orchestrator_temperature: float = 0.0  # sınıflandırma → sıfır sıcaklık
     orchestrator_min_confidence: float = 0.6  # altı: geri-dönüşsüz aksiyon yerine netleştir
+    # Latency-hassas: yavaş API çağrısı 60s beklemesin, ~10s'de kesilip fallback'e düşsün.
+    orchestrator_timeout_seconds: int = 10
+    orchestrator_max_retries: int = 1
 
     # Eski env adlarıyla uyumluluk: GEMINI_PATTERN_*_MODEL hâlâ çalışır.
     gemini_pattern_a_model: str = "gemini-3.1-pro-preview"  # Buddy — kalite öncelik

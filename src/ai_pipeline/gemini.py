@@ -40,6 +40,8 @@ async def generate_structured(
     response_schema: type[BaseModel],
     images: list[Image] | None = None,
     temperature: float | None = None,
+    timeout: float | None = None,
+    max_retries: int | None = None,
 ) -> BaseModel | None:
     """Gemini'ye (sistem + prompt + 0..N görsel) gönderir, structured JSON döner.
 
@@ -47,7 +49,12 @@ async def generate_structured(
     güvenli fallback üretir. Geniş hata yakalama bilinçlidir: VLM hatası yürüyüş
     rehberliğini çökertmemeli (spec §4.1, AGENTS.md §4). Denemeler arası backoff
     rate-limit (429) durumunda bir sonraki denemeye nefes aldırır.
+
+    ``timeout`` / ``max_retries`` verilmezse global ``gemini_*`` ayarları kullanılır;
+    latency-hassas çağrılar (orchestrator) kısa timeout + az retry ile fail-fast olur.
     """
+    effective_timeout = timeout if timeout is not None else settings.gemini_timeout_seconds
+    effective_retries = max_retries if max_retries is not None else settings.gemini_max_retries
     client = get_client()
 
     contents: list[object] = [user_prompt]
@@ -62,11 +69,11 @@ async def generate_structured(
     )
 
     last_err: Exception | None = None
-    for attempt in range(settings.gemini_max_retries + 1):
+    for attempt in range(effective_retries + 1):
         try:
             resp = await asyncio.wait_for(
                 client.aio.models.generate_content(model=model, contents=contents, config=config),
-                timeout=settings.gemini_timeout_seconds,
+                timeout=effective_timeout,
             )
             parsed = getattr(resp, "parsed", None)
             if isinstance(parsed, response_schema):
@@ -75,7 +82,7 @@ async def generate_structured(
         except Exception as err:  # bilinçli geniş yakalama — bkz. docstring
             last_err = err
             logger.warning("Gemini çağrısı başarısız (deneme %d): %r", attempt + 1, err)
-            if attempt < settings.gemini_max_retries:
+            if attempt < effective_retries:
                 await asyncio.sleep(1.0 * (attempt + 1))
 
     logger.error("Gemini çağrısı tüm denemelerde başarısız: %r", last_err)

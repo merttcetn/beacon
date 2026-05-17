@@ -71,6 +71,8 @@ async def decide(
         response_schema=OrchestratorDecision,
         images=None,
         temperature=settings.orchestrator_temperature,
+        timeout=settings.orchestrator_timeout_seconds,
+        max_retries=settings.orchestrator_max_retries,
     )
     if result is None:
         logger.warning("orchestrator decide: LLM başarısız — unknown'a düşülüyor")
