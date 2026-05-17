@@ -7,6 +7,7 @@ import type MapView from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppMap, type AppMapMarker } from '@/components/AppMap';
 import { DockBar } from '@/components/DockBar';
+import { GlassSurface } from '@/components/GlassSurface';
 import { SAMPLE_TICKETS } from '@/constants/sampleTickets';
 import { useTicketStore } from '@/stores/ticketStore';
 import { colors, fontFamily } from '@/theme';
@@ -34,7 +35,13 @@ interface VolunteerMapHeaderProps {
 function VolunteerMapHeader({ onBack }: VolunteerMapHeaderProps) {
   return (
     <SafeAreaView edges={['top']} style={styles.headerSafe} pointerEvents="box-none">
-      <View style={styles.headerBar}>
+      <GlassSurface
+        variant="dark"
+        style={styles.headerBar}
+        radius={999}
+        intensity={42}
+        tintOpacity={0.62}
+      >
         <Pressable
           style={styles.headerIconButton}
           onPress={onBack}
@@ -54,7 +61,7 @@ function VolunteerMapHeader({ onBack }: VolunteerMapHeaderProps) {
         </View>
 
         <View style={styles.headerSpacer} />
-      </View>
+      </GlassSurface>
     </SafeAreaView>
   );
 }
@@ -143,7 +150,12 @@ export default function VolunteerMap() {
           ]}
           pointerEvents="box-none"
         >
-          <View style={styles.previewCard}>
+          <GlassSurface
+            style={styles.previewCard}
+            radius={18}
+            intensity={40}
+            tintOpacity={0.55}
+          >
             <View style={styles.previewBody}>
               <Text style={styles.previewTitle} numberOfLines={1}>
                 {visibleTicket.description_tr}
@@ -164,13 +176,15 @@ export default function VolunteerMap() {
               <Text style={styles.previewDetailText}>Detayını gör</Text>
               <Ionicons name="chevron-forward" size={15} color={colors.text.inverse} />
             </Pressable>
-          </View>
+          </GlassSurface>
         </Animated.View>
       ) : null}
 
       <View style={styles.bottomLeft} pointerEvents="box-none">
-        <Pressable style={styles.locateBtn}>
-          <Ionicons name="locate" size={20} color={colors.accent.primary} />
+        <Pressable>
+          <GlassSurface style={styles.locateBtn} radius={14} intensity={40} tintOpacity={0.5}>
+            <Ionicons name="locate" size={20} color={colors.accent.primary} />
+          </GlassSurface>
         </Pressable>
       </View>
 
@@ -194,19 +208,10 @@ const styles = StyleSheet.create({
     height: 44,
     width: 184,
     marginTop: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(17,23,31,0.88)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 5,
-    shadowColor: '#1A1D24',
-    shadowOpacity: 0.24,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
   },
   headerIconButton: {
     width: 34,
@@ -252,13 +257,9 @@ const styles = StyleSheet.create({
   },
   previewCard: {
     marginHorizontal: 16,
-    height: 64, borderRadius: 16,
-    backgroundColor: colors.bg.elevated,
-    borderWidth: 1, borderColor: colors.border.default,
+    height: 64,
     flexDirection: 'row', alignItems: 'center',
     paddingLeft: 14, paddingRight: 12, gap: 10,
-    shadowColor: '#1A1D24', shadowOpacity: 0.18, shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 }, elevation: 4,
   },
   previewBody: { flex: 1 },
   previewTitle: {
@@ -285,11 +286,7 @@ const styles = StyleSheet.create({
 
   bottomLeft: { position: 'absolute', bottom: 96, left: 16, gap: 8 },
   locateBtn: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: colors.bg.elevated,
-    borderWidth: 1, borderColor: colors.border.default,
+    width: 44, height: 44,
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#1A1D24', shadowOpacity: 0.2, shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 }, elevation: 3,
   },
 });
