@@ -1,0 +1,815 @@
+import { Ionicons } from '@expo/vector-icons';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Haptics from 'expo-haptics';
+import { useKeepAwake } from 'expo-keep-awake';
+import * as Location from 'expo-location';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedProps,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
+import { PulseDot } from '@/components/PulseDot';
+import { Waveform } from '@/components/Waveform';
+import { useBuddyVoice } from '@/hooks/useBuddyVoice';
+import { hasAiApi } from '@/lib/aiApi';
+import { assist, isAbortError } from '@/lib/assist';
+import { analyzeBuddyFrame } from '@/lib/buddy';
+import {
+  prewarmTts,
+  speakTts,
+  speakTtsWithStartCallback,
+  stopTts,
+  subscribeTtsState,
+  waitForTtsIdle,
+} from '@/lib/tts';
+import {
+  BUDDY_CACHE_DELAY_MS,
+  BUDDY_FRAME_CACHE,
+} from '@/constants/buddyFrameCache';
+import { useDebugStore } from '@/stores/debugStore';
+import { useUserStore } from '@/stores/userStore';
+import { colors, fontFamily } from '@/theme';
+
+const HOLD_DURATION_MS = 1000;
+const TICK_INTERVAL_MS = 125;
+const QUICK_START_DELAY_MS = 2000;
+const ANALYZE_INTERVAL_MS = 5000;
+const RECENT_GUIDANCE_MAX = 3;
+const TICK_PATTERN: Haptics.ImpactFeedbackStyle[] = [
+  Haptics.ImpactFeedbackStyle.Rigid,
+  Haptics.ImpactFeedbackStyle.Rigid,
+  Haptics.ImpactFeedbackStyle.Rigid,
+  Haptics.ImpactFeedbackStyle.Heavy,
+  Haptics.ImpactFeedbackStyle.Heavy,
+  Haptics.ImpactFeedbackStyle.Heavy,
+  Haptics.ImpactFeedbackStyle.Heavy,
+];
+
+const DEBUG_TAP_THRESHOLD = 3;
+const DEBUG_TAP_WINDOW_MS = 1500;
+const ONBOARDING_SWIPE_DISTANCE = -70;
+const ONBOARDING_SWIPE_VELOCITY = -0.45;
+
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
+
+export default function BuddyMain() {
+  useKeepAwake();
+  const router = useRouter();
+  const params = useLocalSearchParams();
+  const reset = useUserStore((s) => s.reset);
+  const quickStartParam = params.quickStart;
+  const quickStartRequested = Array.isArray(quickStartParam)
+    ? quickStartParam.includes('1')
+    : quickStartParam === '1';
+
+  // Snapshot at mount — toggling vlmBypass while Buddy is open has no effect.
+  const [vlmBypass] = useState(() => useDebugStore.getState().vlmBypass);
+
+  const [lastSpoken, setLastSpoken] = useState<string>('');
+  const [debugMode, setDebugMode] = useState(false);
+  const [isBuddyActive, setIsBuddyActive] = useState(false);
+  const [quickStartComplete, setQuickStartComplete] = useState(!quickStartRequested);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const debugTapTimes = useRef<number[]>([]);
+
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tickTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const holdProgress = useSharedValue(0);
+  const glow = useSharedValue(0.55);
+
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [cameraReady, setCameraReady] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
+  const coordsRef = useRef<{ lat: number; lon: number } | null>(null);
+  const vlmInflightRef = useRef(false);
+  const ttsSpeakingRef = useRef(false);
+  const voiceFlowActiveRef = useRef(false);
+  const lastFrameUriRef = useRef<string | null>(null);
+  const recentGuidanceRef = useRef<string[]>([]);
+  const screenActiveRef = useRef(false);
+  const buddyFrameAbortRef = useRef<AbortController | null>(null);
+  const quickStartAbortRef = useRef<AbortController | null>(null);
+  const quickStartRanRef = useRef(false);
+  const quickStartStartedAtRef = useRef<number | null>(
+    quickStartRequested ? Date.now() : null,
+  );
+
+  useEffect(() => {
+    quickStartAbortRef.current?.abort();
+    quickStartAbortRef.current = null;
+    quickStartRanRef.current = false;
+    quickStartStartedAtRef.current = quickStartRequested ? Date.now() : null;
+    setQuickStartComplete(!quickStartRequested);
+  }, [quickStartRequested]);
+
+  function cancelHold(silent = false) {
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+    if (tickTimer.current) {
+      clearInterval(tickTimer.current);
+      tickTimer.current = null;
+    }
+    if (!silent && holdProgress.value > 0.05) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
+    }
+    holdProgress.value = withTiming(0, { duration: 200 });
+  }
+
+  const stopSession = useCallback(() => {
+    void stopTts();
+    reset();
+    router.replace('/onboarding');
+  }, [reset, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      screenActiveRef.current = true;
+      setIsBuddyActive(true);
+
+      return () => {
+        screenActiveRef.current = false;
+        setIsBuddyActive(false);
+        voiceFlowActiveRef.current = false;
+        buddyFrameAbortRef.current?.abort();
+        buddyFrameAbortRef.current = null;
+        quickStartAbortRef.current?.abort();
+        quickStartAbortRef.current = null;
+        vlmInflightRef.current = false;
+        void stopTts();
+        if (holdTimer.current) clearTimeout(holdTimer.current);
+        if (tickTimer.current) clearInterval(tickTimer.current);
+      };
+    }, []),
+  );
+
+  const isBuddyScreenActive = useCallback(() => screenActiveRef.current, []);
+
+  const onboardingSwipe = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gesture) => {
+          const isHorizontal = Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25;
+          return isHorizontal && gesture.dx < -18;
+        },
+        onPanResponderRelease: (_, gesture) => {
+          if (
+            gesture.dx < ONBOARDING_SWIPE_DISTANCE ||
+            gesture.vx < ONBOARDING_SWIPE_VELOCITY
+          ) {
+            stopSession();
+          }
+        },
+      }),
+    [stopSession],
+  );
+
+  function startHold() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    holdProgress.value = withTiming(1, { duration: HOLD_DURATION_MS });
+    let tickIndex = 0;
+    tickTimer.current = setInterval(() => {
+      if (tickIndex < TICK_PATTERN.length) {
+        Haptics.impactAsync(TICK_PATTERN[tickIndex]);
+        tickIndex += 1;
+      }
+    }, TICK_INTERVAL_MS);
+    holdTimer.current = setTimeout(() => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      setTimeout(() => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }, 80);
+      cancelHold(true);
+      stopSession();
+    }, HOLD_DURATION_MS);
+  }
+
+  const { metering, isSpeaking } = useBuddyVoice({
+    enabled: voiceEnabled && isBuddyActive,
+    onSpeechStart: () => {
+      if (!screenActiveRef.current) return;
+      // Kullanıcı konuşurken buddy_frame tick'i atla; TTS aktifken kayıt zaten durur.
+      voiceFlowActiveRef.current = true;
+    },
+    onVoiceFlowChange: (active) => {
+      if (!screenActiveRef.current) return;
+      voiceFlowActiveRef.current = active;
+    },
+    onAssistantSpeech: (text) => {
+      if (!screenActiveRef.current) return;
+      setLastSpoken(text);
+      const next = [...recentGuidanceRef.current, text];
+      recentGuidanceRef.current = next.slice(-RECENT_GUIDANCE_MAX);
+    },
+    onAssistResult: (result) => {
+      if (!screenActiveRef.current) return;
+      if (result.ui_action === 'open_ticket' && result.ticket) {
+        // TODO: ticket payload'unu n8n webhook'una ilet (sesli ticket akışı).
+        console.warn('[buddy] open_ticket (n8n iletimi henüz yapılmadı):', result.ticket);
+      } else if (result.ui_action === 'switch_to_sport') {
+        console.warn('[buddy] switch_to_sport istendi — spor modu UI henüz yok');
+      }
+    },
+    onPermissionDenied: () => {
+      if (!screenActiveRef.current) return;
+      console.warn('[buddy] mikrofon izni reddedildi — debug moduna geçildi');
+      setVoiceEnabled(false);
+      setDebugMode(true);
+    },
+    getVoiceContext: () => ({
+      frameUri: lastFrameUriRef.current,
+      lat: coordsRef.current?.lat,
+      lon: coordsRef.current?.lon,
+      screenContext: 'buddy_mode',
+    }),
+    isActive: isBuddyScreenActive,
+  });
+
+  const waveformMode: 'idle' | 'listening' | 'speaking' = isSpeaking
+    ? 'speaking'
+    : voiceEnabled
+    ? 'listening'
+    : 'idle';
+
+  // Buddy'nin okuduğu metin uzadıkça font'u dinamik küçült.
+  // Oval içindeki ttsWrap (top:220, footer ~bottom:60) için kullanılabilir
+  // dikey alan ~130px. Char + kelime sayısının ikisini de hesaba katıp
+  // daha sıkı olanı seçiyoruz; sonra Reanimated ile yumuşak geçiş.
+  const ttsFontSize = useSharedValue(22);
+  const ttsLineHeight = useSharedValue(30);
+  const ttsLetterSpacing = useSharedValue(-0.25);
+
+  useEffect(() => {
+    const text = (lastSpoken || '').trim();
+    const len = text.length;
+    const words = text ? text.split(/\s+/).length : 0;
+
+    const sizeByChars =
+      len > 240 ? 13 :
+      len > 190 ? 14 :
+      len > 150 ? 16 :
+      len > 115 ? 18 :
+      len > 80  ? 20 :
+      len > 50  ? 22 :
+                  25;
+
+    const sizeByWords =
+      words > 40 ? 13 :
+      words > 30 ? 15 :
+      words > 22 ? 17 :
+      words > 16 ? 19 :
+      words > 10 ? 21 :
+      words > 6  ? 23 :
+                   25;
+
+    const target = Math.min(sizeByChars, sizeByWords);
+    const targetLine = Math.round(target * 1.35);
+    // Küçük fontlarda harf aralığını biraz açarak okunabilirliği koru.
+    const targetSpacing = target >= 22 ? -0.25 : target >= 18 ? 0 : 0.15;
+
+    const cfg = { duration: 320, easing: Easing.out(Easing.cubic) };
+    ttsFontSize.value = withTiming(target, cfg);
+    ttsLineHeight.value = withTiming(targetLine, cfg);
+    ttsLetterSpacing.value = withTiming(targetSpacing, cfg);
+  }, [lastSpoken, ttsFontSize, ttsLineHeight, ttsLetterSpacing]);
+
+  const animatedTtsTextStyle = useAnimatedStyle(() => ({
+    fontSize: ttsFontSize.value,
+    lineHeight: ttsLineHeight.value,
+    letterSpacing: ttsLetterSpacing.value,
+  }));
+
+  function handleStatusChipTap() {
+    const now = Date.now();
+    debugTapTimes.current = [
+      ...debugTapTimes.current.filter((t) => now - t < DEBUG_TAP_WINDOW_MS),
+      now,
+    ];
+    if (debugTapTimes.current.length >= DEBUG_TAP_THRESHOLD) {
+      debugTapTimes.current = [];
+      setDebugMode((d) => !d);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+  }
+
+  useEffect(() => {
+    const unsub = subscribeTtsState((s) => {
+      ttsSpeakingRef.current = s;
+    });
+    return unsub;
+  }, []);
+
+  // Kamera + konum izinleri.
+  useEffect(() => {
+    if (!hasAiApi()) return;
+    let cancelled = false;
+    (async () => {
+      if (!cameraPermission?.granted) {
+        const res = await requestCameraPermission();
+        if (!res.granted || cancelled) return;
+      }
+      try {
+        const loc = await Location.getLastKnownPositionAsync();
+        if (loc && !cancelled) {
+          coordsRef.current = {
+            lat: loc.coords.latitude,
+            lon: loc.coords.longitude,
+          };
+        } else {
+          const perm = await Location.requestForegroundPermissionsAsync();
+          if (perm.granted && !cancelled) {
+            const fresh = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            });
+            if (!cancelled) {
+              coordsRef.current = {
+                lat: fresh.coords.latitude,
+                lon: fresh.coords.longitude,
+              };
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[buddy] konum alınamadı', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cameraPermission, requestCameraPermission]);
+
+  const speakBuddyGuidance = useCallback(async (text: string) => {
+    const clean = text.trim();
+    if (!screenActiveRef.current) return;
+    if (!clean) return;
+    setLastSpoken(clean);
+    const next = [...recentGuidanceRef.current, clean];
+    recentGuidanceRef.current = next.slice(-RECENT_GUIDANCE_MAX);
+    if (!screenActiveRef.current) return;
+    await speakTts(clean);
+    if (!screenActiveRef.current) return;
+    await waitForTtsIdle();
+  }, []);
+
+  // "Sesle başla" girişine özel: ilk hızlı kareyi doğrudan /v1/buddy'ye gönder.
+  useEffect(() => {
+    if (vlmBypass) {
+      // MOCK: Demo cache modunda canlı VLM çağrısı yok.
+      if (quickStartRequested && !quickStartComplete) setQuickStartComplete(true);
+      return;
+    }
+    if (!quickStartRequested) return;
+    if (quickStartRanRef.current) return;
+    if (!isBuddyActive) return;
+    if (!hasAiApi()) return;
+    if (!cameraPermission?.granted) return;
+    if (!cameraReady) return;
+
+    let cancelled = false;
+    let controller: AbortController | null = null;
+    const startedAt = quickStartStartedAtRef.current ?? Date.now();
+    quickStartStartedAtRef.current = startedAt;
+    const delay = Math.max(0, QUICK_START_DELAY_MS - (Date.now() - startedAt));
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        quickStartRanRef.current = true;
+        controller = new AbortController();
+        quickStartAbortRef.current = controller;
+
+        try {
+          if (!screenActiveRef.current || cancelled) return;
+          if (voiceFlowActiveRef.current || ttsSpeakingRef.current) return;
+          if (!cameraRef.current) return;
+
+          const photo = await cameraRef.current.takePictureAsync({
+            quality: 0.4,
+            skipProcessing: true,
+            shutterSound: false,
+          });
+          if (!screenActiveRef.current || cancelled || controller.signal.aborted) return;
+          if (!photo?.uri) return;
+
+          lastFrameUriRef.current = photo.uri;
+          const result = await analyzeBuddyFrame({
+            frameUri: photo.uri,
+            lat: coordsRef.current?.lat,
+            lon: coordsRef.current?.lon,
+            recentGuidance: recentGuidanceRef.current.join('\n'),
+            signal: controller.signal,
+          });
+          if (!screenActiveRef.current || cancelled || controller.signal.aborted) return;
+          const text = result.speak_text.trim();
+          if (text && !voiceFlowActiveRef.current) {
+            await speakBuddyGuidance(text);
+          }
+        } catch (err) {
+          if (!isAbortError(err)) {
+            console.warn('[buddy] /v1/buddy quick-start hata', err);
+          }
+        } finally {
+          if (quickStartAbortRef.current === controller) {
+            quickStartAbortRef.current = null;
+          }
+          if (!cancelled && screenActiveRef.current) {
+            setQuickStartComplete(true);
+          }
+        }
+      })();
+    }, delay);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [
+    cameraReady,
+    cameraPermission?.granted,
+    isBuddyActive,
+    quickStartRequested,
+    speakBuddyGuidance,
+    vlmBypass,
+    quickStartComplete,
+  ]);
+
+  // test.html canonical akışı: kamera hazır olur olmaz, sonra her
+  // ANALYZE_INTERVAL_MS'de tek kare → /v1/assist event=buddy_frame.
+  // Voice turn veya TTS aktifken atla.
+  useEffect(() => {
+    if (vlmBypass) return; // MOCK: Demo cache modunda canlı tick yok.
+    if (!isBuddyActive) return;
+    if (!quickStartComplete) return;
+    if (!hasAiApi()) return;
+    if (!cameraPermission?.granted) return;
+    if (!cameraReady) return;
+
+    const tick = async () => {
+      if (!screenActiveRef.current) return;
+      if (vlmInflightRef.current) return;
+      if (ttsSpeakingRef.current) return;
+      if (voiceFlowActiveRef.current) return;
+      if (!cameraRef.current) return;
+      vlmInflightRef.current = true;
+      const controller = new AbortController();
+      buddyFrameAbortRef.current = controller;
+      try {
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.4,
+          skipProcessing: true,
+          shutterSound: false,
+        });
+        if (!screenActiveRef.current || controller.signal.aborted) return;
+        if (!photo?.uri) return;
+        lastFrameUriRef.current = photo.uri;
+        const recentGuidance = recentGuidanceRef.current.join('\n');
+        const result = await assist({
+          event: 'buddy_frame',
+          frameUri: photo.uri,
+          screenContext: 'buddy_mode',
+          lat: coordsRef.current?.lat,
+          lon: coordsRef.current?.lon,
+          recentGuidance,
+          signal: controller.signal,
+        });
+        if (!screenActiveRef.current || controller.signal.aborted) return;
+        const text = result.speak_text.trim();
+        if (text && !voiceFlowActiveRef.current) {
+          await speakBuddyGuidance(text);
+        }
+      } catch (err) {
+        if (isAbortError(err)) return;
+        console.warn('[buddy] /v1/assist buddy_frame hata', err);
+      } finally {
+        if (buddyFrameAbortRef.current === controller) {
+          buddyFrameAbortRef.current = null;
+        }
+        vlmInflightRef.current = false;
+      }
+    };
+
+    const id = setInterval(() => {
+      void tick();
+    }, ANALYZE_INTERVAL_MS);
+    void tick();
+    return () => {
+      clearInterval(id);
+      buddyFrameAbortRef.current?.abort();
+      buddyFrameAbortRef.current = null;
+      vlmInflightRef.current = false;
+    };
+  }, [cameraReady, cameraPermission, isBuddyActive, quickStartComplete, speakBuddyGuidance, vlmBypass]);
+
+  // MOCK: vlmBypass açıkken canlı /v1/assist yerine 13 kayıtlı buddy_frame
+  // olayını sırayla oynat. Her olayda speakTtsWithStartCallback, audio çalmaya
+  // başladığı microtask'ta setLastSpoken'i tetikler -> yazı ile ses aynı anda.
+  useEffect(() => {
+    if (!vlmBypass) return;
+    if (!isBuddyActive) return;
+    if (!quickStartComplete) return;
+
+    let cancelled = false;
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+      });
+
+    void (async () => {
+      await prewarmTts(BUDDY_FRAME_CACHE.map((e) => e.speak_text));
+      for (const event of BUDDY_FRAME_CACHE) {
+        if (cancelled || !screenActiveRef.current) return;
+        while (!cancelled && voiceFlowActiveRef.current) {
+          await sleep(200);
+        }
+        if (cancelled || !screenActiveRef.current) return;
+
+        const clean = event.speak_text.trim();
+        if (!clean) continue;
+
+        const nextGuidance = [...recentGuidanceRef.current, clean];
+        recentGuidanceRef.current = nextGuidance.slice(-RECENT_GUIDANCE_MAX);
+
+        await speakTtsWithStartCallback(clean, () => {
+          if (!screenActiveRef.current) return;
+          setLastSpoken(clean);
+        });
+        if (cancelled || !screenActiveRef.current) return;
+        await waitForTtsIdle();
+        if (cancelled || !screenActiveRef.current) return;
+        await sleep(BUDDY_CACHE_DELAY_MS);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isBuddyActive, quickStartComplete, vlmBypass]);
+
+  useEffect(() => {
+    glow.value = withRepeat(
+      withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true,
+    );
+    return () => {
+      void stopTts();
+      if (holdTimer.current) clearTimeout(holdTimer.current);
+      if (tickTimer.current) clearInterval(tickTimer.current);
+    };
+  }, [glow]);
+
+  const stopEnabled = true;
+
+  const progressFillStyle = useAnimatedStyle(() => ({
+    width: `${holdProgress.value * 100}%`,
+  }));
+  const glowProps = useAnimatedProps(() => ({ opacity: glow.value }));
+
+  return (
+    <SafeAreaView
+      style={styles.root}
+      edges={['top', 'left', 'right']}
+      {...onboardingSwipe.panHandlers}
+    >
+      {hasAiApi() && cameraPermission?.granted ? (
+        <CameraView
+          ref={cameraRef}
+          style={styles.hiddenCamera}
+          facing="back"
+          onCameraReady={() => setCameraReady(true)}
+        />
+      ) : null}
+
+        <View style={styles.statusRow}>
+          <Pressable
+            onPress={handleStatusChipTap}
+            accessibilityRole="button"
+            accessibilityLabel="Buddy durum çubuğu"
+            style={styles.statusChip}
+          >
+            <PulseDot color={debugMode ? '#FFB377' : colors.status.verified} size={8} />
+            <Text style={styles.statusLabel}>{debugMode ? 'DEBUG MODU' : 'BUDDY HAZIR'}</Text>
+            <View style={styles.statusDivider} />
+            <Text style={styles.statusTime}>12:34</Text>
+          </Pressable>
+          <View style={styles.statusRight}>
+            <Ionicons name="navigate-outline" size={13} color={colors.text.tertiary} />
+            <Text style={styles.locText}>ODTÜ Teknokent</Text>
+          </View>
+        </View>
+
+      <View style={styles.oval}>
+        <View
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+          accessible={false}
+          importantForAccessibility="no"
+        >
+          <Svg width="100%" height="100%">
+            <Defs>
+              <RadialGradient id="buddyGlow" cx="50%" cy="40%" r="60%">
+                <Stop offset="0%" stopColor="#5BD4B9" stopOpacity="0.22" />
+                <Stop offset="60%" stopColor="#5BD4B9" stopOpacity="0.05" />
+                <Stop offset="100%" stopColor="#5BD4B9" stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <AnimatedRect
+              x="0"
+              y="0"
+              width="100%"
+              height="100%"
+              fill="url(#buddyGlow)"
+              animatedProps={glowProps}
+            />
+          </Svg>
+        </View>
+
+        {[0, 1, 2].map((i) => (
+          <View
+            key={i}
+            pointerEvents="none"
+            style={[styles.ring, { width: 220 + i * 80, height: 220 + i * 80 }]}
+          />
+        ))}
+
+        <View style={styles.speakingPill}>
+          <PulseDot
+            color={isSpeaking ? '#5BD4B9' : '#FFB377'}
+            size={6}
+            duration={1200}
+          />
+          <Text style={styles.speakingPillText}>
+            {isSpeaking ? 'BUDDY KONUŞUYOR' : 'SİZİ DİNLİYOR'}
+          </Text>
+        </View>
+
+        <View style={styles.waveformWrap} pointerEvents="none">
+          <Waveform mode={waveformMode} metering={metering} />
+        </View>
+
+        <View
+          style={styles.ttsWrap}
+          accessible
+          accessibilityRole="text"
+          accessibilityLiveRegion="polite"
+          accessibilityLanguage="tr-TR"
+          accessibilityLabel={`Şu an okunuyor: ${lastSpoken}`}
+        >
+          <Text style={styles.ttsLabel}>ŞU AN OKUNUYOR</Text>
+          <Animated.Text style={[styles.ttsText, animatedTtsTextStyle]}>
+            {lastSpoken || (voiceEnabled ? 'Dinliyorum…' : '...')}
+          </Animated.Text>
+        </View>
+
+      </View>
+
+      <View style={styles.stopWrap}>
+        <Pressable
+          disabled={!stopEnabled}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !stopEnabled }}
+          accessibilityLabel={stopEnabled ? 'Oturumu durdur' : 'Durdur şu an pasif'}
+          accessibilityHint="Çıkmak için bir saniye basılı tut"
+          onPressIn={stopEnabled ? startHold : undefined}
+          onPressOut={stopEnabled ? () => cancelHold(false) : undefined}
+          style={({ pressed }) => [
+            styles.stopBtn,
+            !stopEnabled && styles.stopBtnDisabled,
+            pressed && stopEnabled && { opacity: 0.96 },
+          ]}
+        >
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.stopProgressWrap, progressFillStyle]}
+          >
+            <View style={styles.stopProgressFill} />
+            <View style={styles.stopProgressEdge} />
+          </Animated.View>
+          <View pointerEvents="none" style={styles.stopRidge} />
+          <View style={styles.stopIconWrap}>
+            <Ionicons name="stop" size={20} color={stopEnabled ? colors.status.new : colors.text.tertiary} />
+          </View>
+          <Text style={styles.stopLabel}>DURDUR</Text>
+        </Pressable>
+        <Text style={styles.stopHint}>
+          {stopEnabled ? 'BASILI TUT · TİTREŞİM EŞİĞİ 1SN' : 'OTURUM BAŞLAMADI'}
+        </Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.bg.primary },
+  hiddenCamera: {
+    position: 'absolute',
+    top: -1000,
+    left: -1000,
+    width: 1,
+    height: 1,
+    opacity: 0,
+  },
+  statusRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 22, paddingTop: 14, paddingBottom: 8,
+  },
+  statusChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 9,
+    paddingHorizontal: 11, paddingVertical: 6,
+    borderRadius: 99,
+    borderWidth: 1, borderColor: 'rgba(42,157,143,0.35)',
+    backgroundColor: 'rgba(42,157,143,0.07)',
+  },
+  statusLabel: {
+    fontFamily: fontFamily.monoBold, fontSize: 11, color: colors.text.primary, letterSpacing: 1.1,
+  },
+  statusDivider: { width: 1, height: 10, backgroundColor: 'rgba(42,157,143,0.4)' },
+  statusTime: {
+    fontFamily: fontFamily.monoBold, fontSize: 11.5,
+    color: colors.status.verified, letterSpacing: 0.5, fontVariant: ['tabular-nums'],
+  },
+  statusRight: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  locText: { fontFamily: fontFamily.body, fontSize: 12, color: colors.text.tertiary },
+  oval: {
+    marginHorizontal: 16, marginTop: 6, height: 412,
+    backgroundColor: colors.bg.deep, borderRadius: 56, overflow: 'hidden', position: 'relative',
+    shadowColor: '#11171F', shadowOpacity: 0.4, shadowRadius: 60,
+    shadowOffset: { width: 0, height: 24 }, elevation: 12,
+  },
+  ring: {
+    position: 'absolute', top: '50%', left: '50%',
+    borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)',
+    transform: [{ translateX: -150 }, { translateY: -150 }],
+  },
+  speakingPill: {
+    position: 'absolute', top: 24, left: 26,
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+  },
+  speakingPillText: {
+    fontFamily: fontFamily.monoBold, fontSize: 11, color: '#5BD4B9', letterSpacing: 1.6,
+  },
+  waveformWrap: { position: 'absolute', top: 78, left: 0, right: 0 },
+  ttsWrap: { position: 'absolute', top: 220, left: 28, right: 28, maxHeight: 150 },
+  ttsLabel: {
+    fontFamily: fontFamily.mono, fontSize: 13,
+    color: 'rgba(244,241,235,0.6)', letterSpacing: 1.5, marginBottom: 12,
+  },
+  ttsText: {
+    fontFamily: fontFamily.display, fontSize: 22, lineHeight: 30,
+    color: '#F4F1EB', letterSpacing: -0.25,
+  },
+  stopWrap: { marginTop: 'auto', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 34 },
+  stopBtn: {
+    width: '100%', height: 96, borderRadius: 24,
+    backgroundColor: colors.status.new,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14,
+    overflow: 'hidden', position: 'relative',
+    shadowColor: colors.status.new, shadowOpacity: 0.45, shadowRadius: 32,
+    shadowOffset: { width: 0, height: 14 }, elevation: 10,
+  },
+  stopBtnDisabled: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    shadowOpacity: 0,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  stopGradientOverlay: {
+    position: 'absolute', left: 0, right: 0, top: '38%', bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+  },
+  stopRidge: {
+    position: 'absolute', left: 0, right: 0, top: 0, height: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.38)',
+  },
+  stopProgressWrap: {
+    position: 'absolute', left: 0, top: 0, bottom: 0,
+    flexDirection: 'row',
+  },
+  stopProgressFill: { flex: 1, backgroundColor: 'rgba(255,255,255,0.32)' },
+  stopProgressEdge: {
+    width: 2, backgroundColor: 'rgba(255,255,255,0.7)',
+    shadowColor: '#fff', shadowOpacity: 0.8, shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  stopIconWrap: {
+    width: 36, height: 36, borderRadius: 8, backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  stopLabel: {
+    fontFamily: fontFamily.displayExtra, fontSize: 26, color: '#fff', letterSpacing: 1.4,
+  },
+  stopHint: {
+    textAlign: 'center', marginTop: 14,
+    fontFamily: fontFamily.mono, fontSize: 11,
+    color: colors.text.tertiary, letterSpacing: 1.6,
+  },
+});
