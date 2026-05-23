@@ -1,53 +1,51 @@
 # frontend
 
-Görme engelli + sosyal sorumluluk + B2B veri marketplace — Expo (React Native, iOS) MVP.
+Beacon's iOS MVP — Expo / React Native. Blind users + civic-responsibility volunteers + B2B data buyers, all in one app.
 
-Tüm ürün/UI kararları:
-- [`product-spec.md`](./product-spec.md) — ürün, akışlar, veri modeli, VLM promptları, n8n
-- [`frontend-spec.md`](./frontend-spec.md) — platform, kütüphaneler, tema, ekranlar, harita, a11y
+> See [`../README.md`](../README.md) for product context. This README only covers running and structure.
 
-## Geliştirme
+## Run
 
 ```bash
 npm install
-cp .env.example .env   # Supabase URL + anon key, Stadia API key
-npm start              # Expo Go ile telefonda QR kodu okut
+cp .env.example .env   # Supabase URL + anon key, Stadia API key, n8n webhook
+npm start              # scan QR with Expo Go
 ```
 
-iOS simülatör için `npm run ios`, Android için `npm run android`.
+For the iOS simulator: `npm run ios`. For Android: `npm run android`.
 
-## Yapı
+## Layout
 
 ```
 app/                    # Expo Router (file-based)
   _layout.tsx           # root: QueryClient, GestureHandler, fonts, Toaster
-  index.tsx             # rol bazlı gateway redirect
-  onboarding/           # hoş geldin → rol seçimi → izinler
-  buddy/                # görme engelli akışı (Yürüyüş / Spor / Geçmiş)
-  volunteer/            # gönüllü tab bar (Harita / Bildir / Akış / Profil)
-  company/              # firma tab bar (Pano / Talepler / Profil)
+  index.tsx             # role-based gateway redirect
+  onboarding/           # welcome → role selection → permissions
+  buddy/                # blind-user flow (Walk / Sport / History)
+  volunteer/            # volunteer tab bar (Map / Report / Feed / Profile)
+  company/              # company tab bar (Dashboard / Tickets / Profile)
 src/
   theme/                # colors, typography, spacing, radius, shadows
-  components/           # Button, Screen, RoleCard, AppMap, ... (custom, UI lib yok)
+  components/           # Button, Screen, RoleCard, AppMap, ... (custom — no UI library)
   lib/                  # supabase, queryClient, vlm (placeholder)
-  stores/               # zustand stores (userStore vs.)
-  constants/            # region (varsayılan ODTÜ/Mahall), seed örnekleri
-  types/                # Ticket, User, vs.
-  hooks/  utils/        # boş — gerektikçe doldurulur
-assets/                 # icon, splash, fontlar
+  stores/               # zustand stores (userStore, etc.)
+  constants/            # region (default: ODTÜ / Mahall), seed samples
+  types/                # Ticket, User, etc.
+  hooks/  utils/        # empty — filled as needed
+assets/                 # icons, splash, fonts
 ```
 
-Path alias: `@/...` → `src/...`, `@app/...` → `app/...`.
+Path aliases: `@/...` → `src/...`, `@app/...` → `app/...`.
 
-## Harita
+## Map
 
-- **react-native-maps** + **Stadia Maps** tile overlay (Expo Go uyumlu, prebuild gerekmez).
-- Varsayılan görünüm: Ankara — **ODTÜ Teknokent / Mahall Maidan** bölgesi.
-- Stadia API key `EXPO_PUBLIC_STADIA_API_KEY` üzerinden, `src/components/AppMap.tsx` kullanır.
+- **react-native-maps** + **Stadia Maps** tile overlay — works in Expo Go (no prebuild).
+- Default region: Ankara — **ODTÜ Teknokent / Mahall Maidan**.
+- Stadia API key via `EXPO_PUBLIC_STADIA_API_KEY`, consumed by `src/components/AppMap.tsx`.
 
-## Notlar
+## Notes
 
-- **Expo Go uyumlu managed workflow.** Mapbox yerine Stadia tile + react-native-maps.
-- VLM endpoint kararı henüz alınmadı — `src/lib/vlm.ts` placeholder.
-- Supabase ortam değişkenleri `.env` üzerinden (`EXPO_PUBLIC_*` prefix Expo'da client'a yansır).
-- Türkçe metin önceliği, gamification yok, yön emri verilmez (spec §9).
+- **Expo Go-compatible managed workflow.** Stadia tiles + react-native-maps instead of Mapbox.
+- VLM endpoint goes through the `ai/` service (see repo root); `src/lib/vlm.ts` wraps the client.
+- Supabase env via `.env` (`EXPO_PUBLIC_*` prefix is exposed to the client by Expo).
+- Turkish-first copy, no gamification, no directional commands (spec §9 — the user decides; we describe).
