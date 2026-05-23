@@ -1,0 +1,17 @@
+[
+  { "id": "seed-001", "lat": 40.9905, "lon": 29.0270, "issue_type": "pothole", "severity": "high", "description_tr": "Kaldırımda derin çukur, yaya geçişini engelliyor" },
+  { "id": "seed-002", "lat": 40.9909, "lon": 29.0274, "issue_type": "missing_tactile_paving", "severity": "medium", "description_tr": "Sarı dokunsal yüzey eksik" },
+  { "id": "seed-003", "lat": 40.9901, "lon": 29.0266, "issue_type": "obstacle", "severity": "medium", "description_tr": "Kaldırıma park etmiş motosiklet" },
+  { "id": "seed-004", "lat": 40.9912, "lon": 29.0277, "issue_type": "uneven_surface", "severity": "low", "description_tr": "Bozuk parke taşları" },
+  { "id": "seed-005", "lat": 40.9898, "lon": 29.0263, "issue_type": "missing_ramp", "severity": "high", "description_tr": "Kaldırım rampası yok, yüksek bordür" },
+  { "id": "seed-006", "lat": 40.9907, "lon": 29.0282, "issue_type": "water_pooling", "severity": "low", "description_tr": "Yağmurda su biriken çukur alan" },
+  { "id": "seed-007", "lat": 41.0420, "lon": 29.0061, "issue_type": "narrow_passage", "severity": "medium", "description_tr": "Tabela direği yüzünden daralan geçit" },
+  { "id": "seed-008", "lat": 41.0265, "lon": 29.0152, "issue_type": "pothole", "severity": "medium", "description_tr": "Yaya yolunda orta boy çukur" },
+  { "id": "seed-009", "lat": 41.0601, "lon": 28.9870, "issue_type": "obstacle", "severity": "high", "description_tr": "Kaldırımı kapatan inşaat malzemesi" },
+  { "id": "seed-010", "lat": 41.0370, "lon": 28.9850, "issue_type": "damaged_equipment", "severity": "medium", "description_tr": "Bozuk yaya butonlu trafik ışığı" },
+  { "id": "seed-011", "lat": 40.9780, "lon": 28.8720, "issue_type": "missing_tactile_paving", "severity": "medium", "description_tr": "Metro çıkışında dokunsal yüzey kopmuş" },
+  { "id": "seed-012", "lat": 41.0082, "lon": 28.9784, "issue_type": "uneven_surface", "severity": "low", "description_tr": "Köprü üstünde kabarmış asfalt" },
+  { "id": "seed-013", "lat": 41.0151, "lon": 28.9795, "issue_type": "missing_ramp", "severity": "high", "description_tr": "Üst geçitte rampa veya asansör yok" },
+  { "id": "seed-014", "lat": 40.9990, "lon": 29.0570, "issue_type": "water_pooling", "severity": "medium", "description_tr": "Otobüs durağı önünde su birikintisi" },
+  { "id": "seed-015", "lat": 41.0490, "lon": 29.0330, "issue_type": "other", "severity": "low", "description_tr": "Kaldırımda baş hizasında budanmamış ağaç dalı" }
+]

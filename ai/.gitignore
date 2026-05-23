@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Test / lint cache
+.pytest_cache/
+.ruff_cache/
+
+# Secrets & runtime
+
+runtime/
+output/
+
+# OS
+.DS_Store
